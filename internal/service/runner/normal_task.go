@@ -1,0 +1,244 @@
+package runner
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/Duke1616/etask/internal/domain"
+	"github.com/Duke1616/etask/internal/event"
+	"github.com/Duke1616/etask/internal/service/acquirer"
+	"github.com/Duke1616/etask/internal/service/invoker"
+	"github.com/Duke1616/etask/internal/service/task"
+	"github.com/Duke1616/etask/pkg/grpc/balancer"
+	"github.com/gotomicro/ego/core/elog"
+)
+
+var _ Runner = &NormalTaskRunner{}
+
+type NormalTaskRunner struct {
+	nodeID       string                 // 当前调度节点ID
+	taskSvc      task.Service           // 任务服务
+	execSvc      task.ExecutionService  // 任务执行服务
+	taskAcquirer acquirer.TaskAcquirer  // 任务抢占器
+	invoker      invoker.Invoker        // 这里一般来说就是 invoker.Dispatcher
+	producer     event.CompleteProducer // 任务完成事件生产者
+
+	logger *elog.Component
+}
+
+func NewNormalTaskRunner(
+	nodeID string,
+	taskSvc task.Service,
+	execSvc task.ExecutionService,
+	taskAcquirer acquirer.TaskAcquirer,
+	invoker invoker.Invoker,
+	producer event.CompleteProducer,
+) *NormalTaskRunner {
+	return &NormalTaskRunner{
+		nodeID:       nodeID,
+		taskSvc:      taskSvc,
+		execSvc:      execSvc,
+		taskAcquirer: taskAcquirer,
+		invoker:      invoker,
+		producer:     producer,
+		logger:       elog.DefaultLogger.With(elog.FieldComponentName("execute.NormalTaskRunner")),
+	}
+}
+
+func (s *NormalTaskRunner) Run(ctx context.Context, task domain.Task) error {
+	// 抢占任务
+	acquiredTask, err := s.acquireTask(ctx, task)
+	if err != nil {
+		s.logger.Error("任务抢占失败",
+			elog.Int64("taskID", task.ID),
+			elog.String("taskName", task.Name),
+			elog.FieldErr(err))
+		return err
+	}
+
+	return s.handleNormalTask(ctx, acquiredTask)
+}
+
+// acquireTask 抢占任务
+func (s *NormalTaskRunner) acquireTask(ctx context.Context, task domain.Task) (domain.Task, error) {
+	// 抢占任务
+	acquiredTask, err := s.taskAcquirer.Acquire(ctx, task.ID, task.Version, s.nodeID)
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("任务抢占失败: %w", err)
+	}
+	// 抢占成功
+	return acquiredTask, nil
+}
+
+func (s *NormalTaskRunner) handleNormalTask(ctx context.Context, task domain.Task) error {
+	// 判断是否为拉取模式
+	isPullMode := task.ExecMode.IsPull()
+
+	initStatus := domain.TaskExecutionStatusPrepare
+	if isPullMode {
+		initStatus = domain.TaskExecutionStatusWaitingPull
+	}
+
+	// 抢占成功，立即创建TaskExecution记录
+	execution, err := s.execSvc.Create(ctx, domain.TaskExecution{
+		Task: task,
+		// 可以认为开始执行了，防止执行节点直接返回"终态"状态Failed，Success等
+		StartTime: time.Now().UnixMilli(),
+		Status:    initStatus,
+	})
+	if err != nil {
+		s.logger.Error("创建任务执行记录失败",
+			elog.Int64("taskID", task.ID),
+			elog.String("taskName", task.Name),
+			elog.FieldErr(err))
+		// 释放任务
+		s.releaseTask(ctx, task)
+		return err
+	}
+
+	// 如果是 PULL 模式，直接返回，不必做主动推送
+	if isPullMode {
+		s.logger.Info("任务已进入拉取队列，等待 Agent 主动拉取",
+			elog.Int64("task_id", execution.Task.ID),
+			elog.Int64("execution_id", execution.ID))
+		return nil
+	}
+
+	// 抢占和创建都成功，异步触发任务
+	go func() {
+		// 执行任务
+		state, err1 := s.invoker.Run(ctx, execution)
+		if err1 != nil {
+			s.logger.Error("执行器执行任务失败",
+				elog.Int64("task_id", execution.Task.ID),
+				elog.Int64("execution_id", execution.ID),
+				elog.String("task_name", execution.Task.Name),
+				elog.FieldErr(err1))
+
+			// 调用执行器失败，应将执行记录标记为失败（FAILED），避免一直处于 PREPARE 状态。
+			// 这也会触发 CompleteConsumer 的完成逻辑，防止 ONE_TIME 任务无限重试。
+			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
+				ID:         execution.ID,
+				TaskID:     execution.Task.ID,
+				Status:     domain.TaskExecutionStatusFailed,
+				TaskResult: fmt.Sprintf("Invocation failed: %v", err1),
+			})
+			if updateErr != nil {
+				s.logger.Error("更新调用失败状态失败", elog.FieldErr(updateErr))
+			}
+
+			// 释放任务,允许重新调度
+			s.releaseTask(ctx, execution.Task)
+			return
+		}
+
+		err1 = s.execSvc.UpdateState(ctx, state)
+		if err1 != nil {
+			s.logger.Error("正常调度任务失败",
+				elog.Any("execution", execution),
+				elog.Any("state", state),
+				elog.FieldErr(err1))
+		}
+	}()
+	return nil
+}
+
+// releaseTask 释放任务
+func (s *NormalTaskRunner) releaseTask(ctx context.Context, task domain.Task) {
+	if err := s.taskAcquirer.Release(ctx, task.ID, s.nodeID); err != nil {
+		s.logger.Error("释放任务失败",
+			elog.Int64("taskID", task.ID),
+			elog.String("taskName", task.Name),
+			elog.FieldErr(err))
+	}
+}
+
+func (s *NormalTaskRunner) WithSpecificNodeIDContext(ctx context.Context, executorNodeID string) context.Context {
+	if executorNodeID != "" {
+		return balancer.WithSpecificNodeID(ctx, executorNodeID)
+	}
+	return ctx
+}
+
+// Retry 重试
+func (s *NormalTaskRunner) Retry(ctx context.Context, execution domain.TaskExecution) error {
+	// 抢占和创建都成功，异步触发任务
+	go func() {
+		// 执行任务，并在 context 中设置要排除的执行节点 ID，避免重调度到同一个节点
+		state, err1 := s.invoker.Run(s.WithExcludedNodeIDContext(ctx, execution.ExecutorNodeID), execution)
+		if err1 != nil {
+			s.logger.Error("执行器执行任务失败",
+				elog.Int64("task_id", execution.Task.ID),
+				elog.Int64("execution_id", execution.ID),
+				elog.String("task_name", execution.Task.Name),
+				elog.FieldErr(err1))
+
+			// 重试过程中调用失败同步状态
+			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
+				ID:         execution.ID,
+				TaskID:     execution.Task.ID,
+				Status:     domain.TaskExecutionStatusFailed,
+				TaskResult: fmt.Sprintf("Invocation failed during retry: %v", err1),
+			})
+			if updateErr != nil {
+				s.logger.Error("重试过程更新调用失败状态失败", elog.FieldErr(updateErr))
+			}
+
+			// 释放任务,允许重新调度
+			s.releaseTask(ctx, execution.Task)
+			s.logger.Debug("任务已释放,可重新调度",
+				elog.Int64("task_id", execution.Task.ID))
+			return
+		}
+
+		err1 = s.execSvc.UpdateState(ctx, state)
+		if err1 != nil {
+			s.logger.Error("重试任务失败",
+				elog.Any("execution", execution),
+				elog.Any("state", state),
+				elog.FieldErr(err1))
+		}
+	}()
+	return nil
+}
+
+func (s *NormalTaskRunner) WithExcludedNodeIDContext(ctx context.Context, executorNodeID string) context.Context {
+	if executorNodeID != "" {
+		return balancer.WithExcludedNodeID(ctx, executorNodeID)
+	}
+	return ctx
+}
+
+// Reschedule 重新调度
+func (s *NormalTaskRunner) Reschedule(ctx context.Context, execution domain.TaskExecution) error {
+	// 抢占和创建都成功，异步触发任务
+	go func() {
+		// 执行任务，并在 context 中设置要指定的执行节点ID
+		state, err1 := s.invoker.Run(s.WithSpecificNodeIDContext(ctx, execution.ExecutorNodeID), execution)
+		if err1 != nil {
+			s.logger.Error("执行器执行任务失败", elog.FieldErr(err1))
+
+			// 重调度过程中调用失败同步状态
+			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
+				ID:         execution.ID,
+				TaskID:     execution.Task.ID,
+				Status:     domain.TaskExecutionStatusFailed,
+				TaskResult: fmt.Sprintf("Invocation failed during reschedule: %v", err1),
+			})
+			if updateErr != nil {
+				s.logger.Error("重调度过程更新调用失败状态失败", elog.FieldErr(updateErr))
+			}
+			return
+		}
+
+		err1 = s.execSvc.UpdateState(ctx, state)
+		if err1 != nil {
+			s.logger.Error("重调度任务失败",
+				elog.Any("execution", execution),
+				elog.Any("state", state),
+				elog.FieldErr(err1))
+		}
+	}()
+	return nil
+}

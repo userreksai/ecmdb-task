@@ -7,11 +7,8 @@ const (
 	Task   int64 = 3 // 任务模块
 )
 
-type bizIDKey struct{}
-
-var ContextKey bizIDKey
-
 const (
+	ContextKey = "biz_id"
 	// MetadataKey gRPC Metadata key
 	MetadataKey = "x-biz-id"
 )

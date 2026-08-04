@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/event"
-	"github.com/Duke1616/etask/internal/service/acquirer"
-	"github.com/Duke1616/etask/internal/service/invoker"
-	"github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/pkg/grpc/balancer"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/event"
+	"github.com/userreksai/ecmdb-task/internal/service/acquirer"
+	"github.com/userreksai/ecmdb-task/internal/service/invoker"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/balancer"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -116,20 +116,10 @@ func (s *NormalTaskRunner) handleNormalTask(ctx context.Context, task domain.Tas
 				elog.String("task_name", execution.Task.Name),
 				elog.FieldErr(err1))
 
-			// 调用执行器失败，应将执行记录标记为失败（FAILED），避免一直处于 PREPARE 状态。
-			// 这也会触发 CompleteConsumer 的完成逻辑，防止 ONE_TIME 任务无限重试。
-			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
-				ID:         execution.ID,
-				TaskID:     execution.Task.ID,
-				Status:     domain.TaskExecutionStatusFailed,
-				TaskResult: fmt.Sprintf("Invocation failed: %v", err1),
-			})
-			if updateErr != nil {
-				s.logger.Error("更新调用失败状态失败", elog.FieldErr(updateErr))
-			}
-
 			// 释放任务,允许重新调度
 			s.releaseTask(ctx, execution.Task)
+			s.logger.Info("任务已释放,可重新调度",
+				elog.Int64("task_id", execution.Task.ID))
 			return
 		}
 
@@ -174,17 +164,6 @@ func (s *NormalTaskRunner) Retry(ctx context.Context, execution domain.TaskExecu
 				elog.String("task_name", execution.Task.Name),
 				elog.FieldErr(err1))
 
-			// 重试过程中调用失败同步状态
-			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
-				ID:         execution.ID,
-				TaskID:     execution.Task.ID,
-				Status:     domain.TaskExecutionStatusFailed,
-				TaskResult: fmt.Sprintf("Invocation failed during retry: %v", err1),
-			})
-			if updateErr != nil {
-				s.logger.Error("重试过程更新调用失败状态失败", elog.FieldErr(updateErr))
-			}
-
 			// 释放任务,允许重新调度
 			s.releaseTask(ctx, execution.Task)
 			s.logger.Debug("任务已释放,可重新调度",
@@ -218,17 +197,6 @@ func (s *NormalTaskRunner) Reschedule(ctx context.Context, execution domain.Task
 		state, err1 := s.invoker.Run(s.WithSpecificNodeIDContext(ctx, execution.ExecutorNodeID), execution)
 		if err1 != nil {
 			s.logger.Error("执行器执行任务失败", elog.FieldErr(err1))
-
-			// 重调度过程中调用失败同步状态
-			updateErr := s.execSvc.UpdateState(ctx, domain.ExecutionState{
-				ID:         execution.ID,
-				TaskID:     execution.Task.ID,
-				Status:     domain.TaskExecutionStatusFailed,
-				TaskResult: fmt.Sprintf("Invocation failed during reschedule: %v", err1),
-			})
-			if updateErr != nil {
-				s.logger.Error("重调度过程更新调用失败状态失败", elog.FieldErr(updateErr))
-			}
 			return
 		}
 

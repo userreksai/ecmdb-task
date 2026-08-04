@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/repository"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/repository"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"github.com/gotomicro/ego/core/elog"
 )
 

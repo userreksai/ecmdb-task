@@ -1,14 +1,15 @@
 package ioc
 
 import (
-	agentSvc "github.com/Duke1616/etask/internal/agent"
-	"github.com/Duke1616/etask/internal/agent/web"
-	"github.com/Duke1616/etask/internal/grpc"
-	"github.com/Duke1616/etask/internal/repository"
-	"github.com/Duke1616/etask/internal/repository/dao"
-	taskSvc "github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/internal/web/executor"
-	"github.com/Duke1616/etask/internal/web/manager"
+	"github.com/Duke1616/ecmdb/pkg/policy"
+	agentSvc "github.com/userreksai/ecmdb-task/internal/agent"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
+	"github.com/userreksai/ecmdb-task/internal/grpc"
+	"github.com/userreksai/ecmdb-task/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	taskSvc "github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/internal/web/executor"
+	"github.com/userreksai/ecmdb-task/internal/web/manager"
 	"github.com/google/wire"
 )
 
@@ -22,9 +23,7 @@ var (
 	WebSetup = wire.NewSet(
 		InitECMDBGrpcClient,
 		InitEndpointServiceClient,
-		InitPolicySDK,
-		InitPermSyncer,
-		InitProviders,
+		policy.NewSDK,
 		InitListener,
 		InitGinMiddlewares,
 		InitGinWebServer,
@@ -34,7 +33,6 @@ var (
 		InitDB,
 		dao.NewGORMTaskDAO,
 		repository.NewTaskRepository,
-		repository.NewTaskExecutionLogRepository,
 		taskSvc.NewService,
 		taskSvc.NewLogService,
 		manager.NewHandler,

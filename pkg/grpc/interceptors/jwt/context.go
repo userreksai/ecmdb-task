@@ -3,46 +3,28 @@ package jwt
 import (
 	"context"
 
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/golang-jwt/jwt/v4"
+	"google.golang.org/grpc/metadata"
 )
 
-// Set 解析受信的 JWT Claims 并提取 tenant_id 与 user_id 强类型注入 Context
-func Set(ctx context.Context, claims jwt.MapClaims) context.Context {
-	if claims == nil {
+// ContextWithJWT 创建带有 JWT 的 context
+func ContextWithJWT(ctx context.Context, key string) context.Context {
+	// 使用项目已有的JWT包创建令牌
+	jwtAuth := NewJwtAuth(key)
+
+	// 此时不再附带 bizID 的逻辑
+	claims := jwt.MapClaims{}
+
+	// 使用JWT认证包的Encode方法生成令牌
+	tokenString, err := jwtAuth.Encode(claims)
+	if err != nil {
+		// NOTE: 如果生成失败,返回原始 context
 		return ctx
 	}
 
-	// 提取并强转租户 ID
-	if tenantVal, ok := claims["tenant_id"]; ok {
-		tid := parseID(tenantVal)
-		if tid > 0 {
-			ctx = ctxutil.WithTenantID(ctx, tid)
-			ctx = ctxutil.WithOriginTenantID(ctx, tid)
-		}
-	}
-
-	// 提取并强转用户 ID
-	if uidVal, ok := claims["user_id"]; ok {
-		uid := parseID(uidVal)
-		if uid > 0 {
-			ctx = ctxutil.WithUserID(ctx, uid)
-		}
-	}
-
-	return ctx
-}
-
-// parseID 处理 JWT claims 解密后不同数值类型的防呆转换
-func parseID(val interface{}) int64 {
-	switch v := val.(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
-	case int:
-		return int64(v)
-	default:
-		return 0
-	}
+	// 创建带有授权信息的元数据
+	md := metadata.New(map[string]string{
+		AuthorizationKey: BearerPrefix + tokenString,
+	})
+	return metadata.NewOutgoingContext(ctx, md)
 }

@@ -4,9 +4,9 @@
 package ioc
 
 import (
-	"github.com/Duke1616/etask/internal/agent"
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/internal/agent"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/google/wire"
 )
 
@@ -71,6 +71,7 @@ func InitSchedulerServerModule(base *Base) *grpcpkg.Server {
 	return nil
 }
 
+// InitWebModule 专门用于构造管理后台 Web 路由
 func InitWebModule(base *Base) *WebModule {
 	wire.Build(
 		TaskSet,
@@ -78,11 +79,9 @@ func InitWebModule(base *Base) *WebModule {
 		ExecutorSet,
 		AgentWebSet,
 		WebSetup,
-		ProducerSet,
-		InitNodeID,
 
 		// 从 Base 中提取依赖，避免重复绑定 BaseSet/WebSetup
-		wire.FieldsOf(new(*Base), "Registry", "Etcd", "MQ"),
+		wire.FieldsOf(new(*Base), "Registry", "Etcd"),
 		wire.Struct(new(WebModule), "*"),
 	)
 	return nil

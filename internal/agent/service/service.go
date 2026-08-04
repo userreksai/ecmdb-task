@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Duke1616/etask/internal/agent/domain"
-	"github.com/Duke1616/etask/internal/grpc/scripts"
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/internal/agent/domain"
+	"github.com/userreksai/ecmdb-task/internal/grpc/scripts"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/ecodeclub/mq-api"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -70,7 +70,6 @@ func (s *service) Receive(ctx context.Context, req domain.ExecuteReceive) (strin
 
 	// 4. 创建 Context
 	taskCtx := executor.NewContextWithLogger(
-		ctx,
 		0, // Kafka 模式下暂无 ExecutionID
 		req.TaskId,
 		"kafka_task", // 任务名称

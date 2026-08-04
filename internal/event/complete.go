@@ -1,6 +1,6 @@
 package event
 
-import "github.com/Duke1616/etask/internal/domain"
+import "github.com/userreksai/ecmdb-task/internal/domain"
 
 type Event struct {
 	TaskID         int64                      `json:"taskId"`

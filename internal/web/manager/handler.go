@@ -1,14 +1,8 @@
 package manager
 
 import (
-	"time"
-
-	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/internal/sse"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/bizid"
-	"github.com/ecodeclub/ekit/slice"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -16,72 +10,30 @@ import (
 var _ ginx.Handler = &Handler{}
 
 type Handler struct {
-	svc     task.Service
-	logSvc  task.LogService
-	execSvc task.ExecutionService
-	capability.IRegistry
+	svc    task.Service
+	logSvc task.LogService
 }
 
 func (h *Handler) PublicRoutes(_ *gin.Engine) {
-
 }
 
-func (h *Handler) IdentifyRoutes(server *gin.Engine) {
-	g := server.Group("/api/manager")
-	// 实时推送系统全局任务状态变更事件流（例如任务启动、停止、下发成功）
-	g.GET("/task-events/stream", ginx.W(h.StreamEvents))
-
-	// 实时流式增量推送指定执行实例（ExecutionID）的执行日志，多终端独立订阅，零轮询零冗余广播
-	g.GET("/executions/:id/logs/stream", ginx.W(h.StreamExecutionLogs))
-
-	// 实时流式推送特定任务（TaskID）下新增/更新的执行记录（Executions）以及实时的进度条变更事件
-	g.GET("/tasks/:id/executions/stream", ginx.W(h.StreamTaskExecutions))
-}
-
-func NewHandler(svc task.Service, logSvc task.LogService, execSvc task.ExecutionService) *Handler {
+func NewHandler(svc task.Service, logSvc task.LogService) *Handler {
 	return &Handler{
-		svc:       svc,
-		logSvc:    logSvc,
-		execSvc:   execSvc,
-		IRegistry: capability.NewRegistry("task", "manager", "任务管理"),
+		svc:    svc,
+		logSvc: logSvc,
 	}
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/manager")
-
-	// --- 任务管理 ---
-	g.POST("/create", h.Capability("创建任务", "add").
-		Handle(ginx.B[CreateTaskReq](h.Create)),
-	)
-	g.POST("/list", h.Capability("查看任务列表", "view").
-		Handle(ginx.B[PageReq](h.List)),
-	)
-	g.GET("/detail/:id", h.Capability("查看任务详情", "get").
-		Handle(ginx.W(h.Detail)),
-	)
-	g.POST("/update", h.Capability("更新任务", "edit").
-		Handle(ginx.B[UpdateTaskReq](h.Update)),
-	)
-	g.DELETE("/delete/:id", h.Capability("删除任务", "delete").
-		Handle(ginx.W(h.Delete)),
-	)
-
-	// --- 执行监控 ---
-	g.POST("/logs", h.Capability("查看日志", "logs").
-		Handle(ginx.B[GetLogsReq](h.GetLogs)),
-	)
-	g.POST("/executions", h.Capability("查看执行记录", "executions").
-		Handle(ginx.B[ListExecutionsReq](h.ListExecutions)),
-	)
-
-	// --- 任务控制 ---
-	g.POST("/stop/:id", h.Capability("停止任务", "stop").
-		Handle(ginx.W(h.Stop)),
-	)
-	g.POST("/run/:id", h.Capability("运行任务", "start").
-		Handle(ginx.W(h.Run)),
-	)
+	g.POST("/create", ginx.B[CreateTaskReq](h.Create))
+	g.POST("/logs", ginx.B[GetLogsReq](h.GetLogs))
+	g.POST("/list", ginx.B[PageReq](h.List))
+	g.GET("/detail/:id", ginx.W(h.Detail))
+	g.DELETE("/delete/:id", ginx.W(h.Delete))
+	g.POST("/update", ginx.B[UpdateTaskReq](h.Update))
+	g.POST("/stop/:id", ginx.W(h.Stop))
+	g.POST("/run/:id", ginx.W(h.Run))
 }
 
 func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
@@ -134,15 +86,6 @@ func (h *Handler) Stop(ctx *ginx.Context) (ginx.Result, error) {
 		}, err
 	}
 
-	// 停止成功后，主动拉取最新任务状态并广播
-	if t, errGet := h.svc.GetByID(ctx, id); errGet == nil {
-		sse.GetSSEHub().Broadcast(sse.TaskStatusEvent{
-			TaskID:   t.ID,
-			Status:   t.Status.String(),
-			NextTime: t.NextTime,
-		})
-	}
-
 	return ginx.Result{
 		Msg: "success",
 	}, nil
@@ -162,44 +105,9 @@ func (h *Handler) Run(ctx *ginx.Context) (ginx.Result, error) {
 		}, err
 	}
 
-	// 启动成功后，主动拉取最新任务状态并广播
-	if t, errGet := h.svc.GetByID(ctx, id); errGet == nil {
-		sse.GetSSEHub().Broadcast(sse.TaskStatusEvent{
-			TaskID:   t.ID,
-			Status:   t.Status.String(),
-			NextTime: t.NextTime,
-		})
-	}
-
 	return ginx.Result{
 		Msg: "success",
 	}, nil
-}
-
-// StreamEvents 实时向前端推送任务状态变更事件流的 SSE 接口
-func (h *Handler) StreamEvents(ctx *ginx.Context) (ginx.Result, error) {
-	sse.GetSSEHub().Stream(ctx, sse.TASK_STATUS_CHANGE_EVENT, 20*time.Second)
-	return ginx.Result{}, nil
-}
-
-// StreamExecutionLogs 实时推送特定执行记录的日志流的 SSE 接口
-func (h *Handler) StreamExecutionLogs(ctx *ginx.Context) (ginx.Result, error) {
-	id, err := ctx.Param("id").AsInt64()
-	if err != nil {
-		return systemErrorResult, err
-	}
-	sse.GetExecutionLogsHub().Stream(ctx, id, sse.TASK_LOG_EVENT, 20*time.Second)
-	return ginx.Result{}, nil
-}
-
-// StreamTaskExecutions 实时推送特定任务的执行记录及进度流的 SSE 接口
-func (h *Handler) StreamTaskExecutions(ctx *ginx.Context) (ginx.Result, error) {
-	id, err := ctx.Param("id").AsInt64()
-	if err != nil {
-		return systemErrorResult, err
-	}
-	sse.GetTaskExecutionsHub().Stream(ctx, id, sse.TASK_EXECUTION_EVENT, 20*time.Second)
-	return ginx.Result{}, nil
 }
 
 func (h *Handler) Update(ctx *ginx.Context, req UpdateTaskReq) (ginx.Result, error) {
@@ -217,52 +125,13 @@ func (h *Handler) Update(ctx *ginx.Context, req UpdateTaskReq) (ginx.Result, err
 }
 
 func (h *Handler) GetLogs(ctx *ginx.Context, req GetLogsReq) (ginx.Result, error) {
-	logs, total, err := h.logSvc.GetLogs(ctx, req.ExecutionID, req.MinID, req.Limit)
+	logs, err := h.logSvc.GetLogs(ctx, req.ExecutionID, req.MinID, req.Limit)
 	if err != nil {
 		return systemErrorResult, err
 	}
 	return ginx.Result{
-		Data: ListLogResp{
-			Total: total,
-			Logs: slice.Map(logs, func(_ int, src domain.TaskExecutionLog) TaskLogVO {
-				return TaskLogVO{
-					ID:          src.ID,
-					TaskID:      src.TaskID,
-					ExecutionID: src.ExecutionID,
-					Content:     src.Content,
-					CTime:       src.CTime,
-				}
-			}),
-		},
-		Msg: "success",
-	}, nil
-}
-
-func (h *Handler) ListExecutions(ctx *ginx.Context, req ListExecutionsReq) (ginx.Result, error) {
-	executions, total, err := h.execSvc.ListByTaskID(ctx, req.TaskID, req.Offset, req.Limit)
-	if err != nil {
-		return systemErrorResult, err
-	}
-
-	return ginx.Result{
-		Data: ListExecutionResp{
-			Total: total,
-			Executions: slice.Map(executions, func(_ int, src domain.TaskExecution) TaskExecutionVO {
-				return TaskExecutionVO{
-					ID:              src.ID,
-					TaskID:          src.Task.ID,
-					TaskName:        src.Task.Name,
-					StartTime:       src.StartTime,
-					EndTime:         src.EndTime,
-					Status:          src.Status.String(),
-					RunningProgress: src.RunningProgress,
-					ExecutorNodeId:  src.ExecutorNodeID,
-					TaskResult:      src.TaskResult,
-					CTime:           src.CTime,
-				}
-			}),
-		},
-		Msg: "success",
+		Data: logs,
+		Msg:  "success",
 	}, nil
 }
 
@@ -279,7 +148,7 @@ func (h *Handler) Create(ctx *ginx.Context, req CreateTaskReq) (ginx.Result, err
 }
 
 func (h *Handler) List(ctx *ginx.Context, req PageReq) (ginx.Result, error) {
-	tasks, total, err := h.svc.List(ctx, bizid.Task, req.Offset, req.Limit)
+	tasks, total, err := h.svc.List(ctx, req.Offset, req.Limit)
 	if err != nil {
 		return systemErrorResult, err
 	}
@@ -306,6 +175,7 @@ func sliceMap[T, R any](data []T, f func(src T) R) []R {
 func toVO(src domain.Task) TaskVO {
 	vo := TaskVO{
 		ID:                  src.ID,
+		Version:             src.Version,
 		Name:                src.Name,
 		Type:                src.Type.String(),
 		CronExpr:            src.CronExpr,
@@ -313,7 +183,6 @@ func toVO(src domain.Task) TaskVO {
 		NextTime:            src.NextTime,
 		MaxExecutionSeconds: src.MaxExecutionSeconds,
 		ScheduleParams:      src.ScheduleParams,
-		Metadata:            src.Metadata,
 		CTime:               src.CTime,
 		UTime:               src.UTime,
 	}
@@ -321,6 +190,7 @@ func toVO(src domain.Task) TaskVO {
 	if src.GrpcConfig != nil {
 		vo.GrpcConfig = &GrpcConfig{
 			ServiceName: src.GrpcConfig.ServiceName,
+			AuthToken:   src.GrpcConfig.AuthToken,
 			HandlerName: src.GrpcConfig.HandlerName,
 			Params:      src.GrpcConfig.Params,
 		}
@@ -329,7 +199,6 @@ func toVO(src domain.Task) TaskVO {
 	if src.HTTPConfig != nil {
 		vo.HTTPConfig = &HTTPConfig{
 			Endpoint: src.HTTPConfig.Endpoint,
-			Headers:  src.HTTPConfig.Headers,
 			Params:   src.HTTPConfig.Params,
 		}
 	}
@@ -353,13 +222,13 @@ func toDomain(req CreateTaskReq) domain.Task {
 		MaxExecutionSeconds: req.MaxExecutionSeconds,
 		ScheduleParams:      req.ScheduleParams,
 		Status:              domain.TaskStatusActive,
-		BizID:               bizid.Task,
-		Metadata:            req.Metadata,
+		Version:             1,
 	}
 
 	if req.GrpcConfig != nil {
 		t.GrpcConfig = &domain.GrpcConfig{
 			ServiceName: req.GrpcConfig.ServiceName,
+			AuthToken:   req.GrpcConfig.AuthToken,
 			HandlerName: req.GrpcConfig.HandlerName,
 			Params:      req.GrpcConfig.Params,
 		}
@@ -368,7 +237,6 @@ func toDomain(req CreateTaskReq) domain.Task {
 	if req.HTTPConfig != nil {
 		t.HTTPConfig = &domain.HTTPConfig{
 			Endpoint: req.HTTPConfig.Endpoint,
-			Headers:  req.HTTPConfig.Headers,
 			Params:   req.HTTPConfig.Params,
 		}
 	}
@@ -387,18 +255,18 @@ func toDomain(req CreateTaskReq) domain.Task {
 func toUpdateDomain(req UpdateTaskReq) domain.Task {
 	t := domain.Task{
 		ID:                  req.ID,
+		Version:             req.Version,
 		Name:                req.Name,
 		Type:                domain.TaskType(req.Type),
 		CronExpr:            req.CronExpr,
 		MaxExecutionSeconds: req.MaxExecutionSeconds,
 		ScheduleParams:      req.ScheduleParams,
-		BizID:               bizid.Task,
-		Metadata:            req.Metadata,
 	}
 
 	if req.GrpcConfig != nil {
 		t.GrpcConfig = &domain.GrpcConfig{
 			ServiceName: req.GrpcConfig.ServiceName,
+			AuthToken:   req.GrpcConfig.AuthToken,
 			HandlerName: req.GrpcConfig.HandlerName,
 			Params:      req.GrpcConfig.Params,
 		}
@@ -407,7 +275,6 @@ func toUpdateDomain(req UpdateTaskReq) domain.Task {
 	if req.HTTPConfig != nil {
 		t.HTTPConfig = &domain.HTTPConfig{
 			Endpoint: req.HTTPConfig.Endpoint,
-			Headers:  req.HTTPConfig.Headers,
 			Params:   req.HTTPConfig.Params,
 		}
 	}

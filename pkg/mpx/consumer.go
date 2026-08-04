@@ -66,15 +66,11 @@ func (c *Consumer) consume(ctx context.Context, mqChan <-chan *mq.Message, consu
 			if !ok {
 				return
 			}
-			// 自动从 Kafka 消息头部提取并解包多租户及业务 Context
-			activeCtx := ExtractContext(ctx, message)
-
-			err := consumeFunc(activeCtx, message)
+			err := consumeFunc(ctx, message)
 			if err != nil {
 				c.logger.Error("消费消息失败",
 					elog.String("消息体", string(message.Value)),
 					elog.FieldErr(err))
-				continue
 			}
 			c.logger.Info("消费消息成功",
 				elog.String("消息体", string(message.Value)),

@@ -7,16 +7,17 @@
 package ioc
 
 import (
-	"github.com/Duke1616/etask/internal/agent"
-	"github.com/Duke1616/etask/internal/agent/web"
-	grpc2 "github.com/Duke1616/etask/internal/grpc"
-	"github.com/Duke1616/etask/internal/repository"
-	"github.com/Duke1616/etask/internal/repository/dao"
-	"github.com/Duke1616/etask/internal/service/task"
-	executor2 "github.com/Duke1616/etask/internal/web/executor"
-	"github.com/Duke1616/etask/internal/web/manager"
-	"github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/Duke1616/ecmdb/pkg/policy"
+	"github.com/userreksai/ecmdb-task/internal/agent"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
+	grpc2 "github.com/userreksai/ecmdb-task/internal/grpc"
+	"github.com/userreksai/ecmdb-task/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	executor2 "github.com/userreksai/ecmdb-task/internal/web/executor"
+	"github.com/userreksai/ecmdb-task/internal/web/manager"
+	"github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 )
 
 // Injectors from wire.go:
@@ -44,8 +45,7 @@ func InitSchedulerModule(base *Base) *SchedulerModule {
 	taskExecutionDAO := dao.NewGORMTaskExecutionDAO(db)
 	taskExecutionRepository := repository.NewTaskExecutionRepository(taskExecutionDAO, taskRepository)
 	taskExecutionLogDAO := dao.NewGORMTaskExecutionLogDAO(db)
-	taskExecutionLogRepository := repository.NewTaskExecutionLogRepository(taskExecutionLogDAO)
-	logService := task.NewLogService(taskExecutionLogRepository)
+	logService := task.NewLogService(taskExecutionLogDAO)
 	mq := base.MQ
 	completeProducer := InitCompleteProducer(mq)
 	registry := base.Registry
@@ -95,8 +95,7 @@ func InitSchedulerServerModule(base *Base) *grpc.Server {
 	taskExecutionRepository := repository.NewTaskExecutionRepository(taskExecutionDAO, taskRepository)
 	service := task.NewService(taskRepository)
 	taskExecutionLogDAO := dao.NewGORMTaskExecutionLogDAO(db)
-	taskExecutionLogRepository := repository.NewTaskExecutionLogRepository(taskExecutionLogDAO)
-	logService := task.NewLogService(taskExecutionLogRepository)
+	logService := task.NewLogService(taskExecutionLogDAO)
 	mq := base.MQ
 	completeProducer := InitCompleteProducer(mq)
 	executionService := task.NewExecutionService(string2, taskExecutionRepository, service, logService, completeProducer, registry)
@@ -107,31 +106,23 @@ func InitSchedulerServerModule(base *Base) *grpc.Server {
 	return server
 }
 
+// InitWebModule 专门用于构造管理后台 Web 路由
 func InitWebModule(base *Base) *WebModule {
 	v := InitGinMiddlewares()
-	sdk := InitPolicySDK()
-	syncer := InitPermSyncer()
-	v2 := InitProviders()
+	sdk := policy.NewSDK()
 	db := InitDB()
 	taskDAO := dao.NewGORMTaskDAO(db)
 	taskRepository := repository.NewTaskRepository(taskDAO)
 	service := task.NewService(taskRepository)
 	taskExecutionLogDAO := dao.NewGORMTaskExecutionLogDAO(db)
-	taskExecutionLogRepository := repository.NewTaskExecutionLogRepository(taskExecutionLogDAO)
-	logService := task.NewLogService(taskExecutionLogRepository)
-	string2 := InitNodeID()
-	taskExecutionDAO := dao.NewGORMTaskExecutionDAO(db)
-	taskExecutionRepository := repository.NewTaskExecutionRepository(taskExecutionDAO, taskRepository)
-	mq := base.MQ
-	completeProducer := InitCompleteProducer(mq)
+	logService := task.NewLogService(taskExecutionLogDAO)
+	handler := manager.NewHandler(service, logService)
 	registry := base.Registry
-	executionService := task.NewExecutionService(string2, taskExecutionRepository, service, logService, completeProducer, registry)
-	handler := manager.NewHandler(service, logService, executionService)
 	executorHandler := executor2.NewHandler(registry)
 	client := base.Etcd
 	webHandler := web.NewHandler(client)
 	listener := InitListener()
-	component := InitGinWebServer(v, sdk, syncer, v2, handler, executorHandler, webHandler, listener)
+	component := InitGinWebServer(v, sdk, handler, executorHandler, webHandler, listener)
 	clientConnInterface := InitECMDBGrpcClient(registry)
 	endpointServiceClient := InitEndpointServiceClient(clientConnInterface)
 	webModule := &WebModule{

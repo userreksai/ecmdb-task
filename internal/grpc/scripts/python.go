@@ -3,7 +3,7 @@ package scripts
 import (
 	"os/exec"
 
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 )
 
 // PythonTaskHandler Python 任务处理器
@@ -36,20 +36,17 @@ func (h *PythonTaskHandler) Metadata() []executor.Parameter {
 			Key:      "code",
 			Desc:     "脚本代码内容",
 			Required: true,
-			Bindings: map[string]executor.Binding{
-				"static": &executor.BindingOption{
+			Bindings: map[string]executor.BindingOption{
+				"static": {
 					Label:       "手动输入",
 					Placeholder: "请输入 Python 脚本代码...",
 					Component:   "code-editor",
 					Config:      map[string]string{"language": "python"},
 				},
-				"codebook": &executor.BindingOption{
+				"codebook": {
 					Label:       "脚本库引用",
 					Placeholder: "请选择脚本库...",
 					Component:   "codebook-picker",
-					Resolver: func(ctx *executor.Context, value string) (string, error) {
-						return value, nil
-					},
 				},
 			},
 		},
@@ -57,8 +54,8 @@ func (h *PythonTaskHandler) Metadata() []executor.Parameter {
 			Key:      "args",
 			Desc:     "脚本执行参数",
 			Required: false,
-			Bindings: map[string]executor.Binding{
-				"static": &executor.BindingOption{
+			Bindings: map[string]executor.BindingOption{
+				"static": {
 					Label:       "参数内容 (JSON)",
 					Placeholder: `{"name": "zhangsan", "age": 18}`,
 					Component:   "code-editor",
@@ -70,19 +67,16 @@ func (h *PythonTaskHandler) Metadata() []executor.Parameter {
 			Key:      "variables",
 			Desc:     "环境变量",
 			Required: false,
-			Bindings: map[string]executor.Binding{
-				"static": &executor.BindingOption{
+			Bindings: map[string]executor.BindingOption{
+				"static": {
 					Label:       "手动输入",
 					Placeholder: `[{"key": "K1", "value": "V1", "secret": false}]`,
 					Component:   "kv-input",
 				},
-				"runner": &executor.BindingOption{
+				"runner": {
 					Label:       "执行单元引用",
 					Placeholder: "请选择执行单元...",
 					Component:   "runner-picker",
-					Resolver: func(ctx *executor.Context, value string) (string, error) {
-						return value, nil
-					},
 				},
 			},
 		},

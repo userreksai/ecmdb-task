@@ -7,9 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Duke1616/etask/internal/repository/dao"
-
-	"github.com/Duke1616/eiam/pkg/gormx"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -64,12 +62,6 @@ func InitDB() *gorm.DB {
 	// goose 处理 AutoMigrate 无法覆盖的变更：
 	// ENUM 修改、列删除、索引调整等需要版本化管理的 DDL
 	RunMigrations(db)
-
-	// 注册多租户插件，自动隔离 CRUD 操作
-	err = db.Use(gormx.NewTenantPlugin())
-	if err != nil {
-		panic(err)
-	}
 
 	return db
 }

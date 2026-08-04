@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/pkg/sqlx"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/pkg/sqlx"
 	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
@@ -24,10 +24,9 @@ const (
 // Task 任务表DAO对象
 type Task struct {
 	ID                  int64                               `gorm:"type:bigint;primaryKey;autoIncrement;"`
-	TenantID            int64                               `gorm:"type:bigint unsigned;not null;default:0;index;comment:'租户ID'"`
 	BizID               int64                               `gorm:"type:bigint unsigned;not null;default:0;comment:biz_id"`
 	BizKey              string                              `gorm:"type:varchar(255);not null;default:'';index:idx_biz;comment:'业务方唯一标识，如工单号'"`
-	Name                string                              `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_name_tenant;comment:'任务名称'"`
+	Name                string                              `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_name;comment:'任务名称'"`
 	Type                string                              `gorm:"type:ENUM('RECURRING', 'ONE_TIME');not null;default:'RECURRING';comment:'任务类型: RECURRING-定时任务(循环执行), ONE_TIME-一次性任务(执行一次后停止)'"`
 	CronExpr            string                              `gorm:"type:varchar(100);not null;comment:'cron表达式'"`
 	GrpcConfig          sqlx.JSONColumn[domain.GrpcConfig]  `gorm:"type:json;comment:'gRPC配置：{\"serviceName\": \"user-service\"}'"`
@@ -42,7 +41,6 @@ type Task struct {
 	Ctime               int64                               `gorm:"comment:'创建时间'"`
 	Utime               int64                               `gorm:"index:idx_next_time_status_utime,priority:3;comment:'更新时间'"`
 	ExecMode            string                              `gorm:"type:ENUM('PUSH', 'PULL');not null;default:'PUSH';comment:'本次调度采用的执行模式，由 scheduler 选节点时写入'"`
-	Metadata            sqlx.JSONColumn[map[string]string]  `gorm:"type:json;comment:'任务参数元数据'"`
 }
 
 // TableName 指定表名
@@ -79,9 +77,9 @@ type TaskDAO interface {
 	// Retry 手动重试任务（针对一次性任务，将其状态重置为 ACTIVE 并设置下一次执行时间）
 	Retry(ctx context.Context, id, version, nextTime int64) (*Task, error)
 	// List 分页获取任务列表
-	List(ctx context.Context, bizID int64, offset, limit int) ([]*Task, error)
+	List(ctx context.Context, offset, limit int) ([]*Task, error)
 	// Count 获取任务总数
-	Count(ctx context.Context, bizID int64) (int64, error)
+	Count(ctx context.Context) (int64, error)
 	// Update 更新任务配置
 	Update(ctx context.Context, task Task) error
 	// Delete 删除任务
@@ -194,7 +192,8 @@ func (g *GORMTaskDAO) Renew(ctx context.Context, scheduleNodeID string) error {
 		Model(&Task{}).
 		Where("schedule_node_id = ? AND status = ?", scheduleNodeID, StatusPreempted).
 		Updates(map[string]any{
-			"utime": time.Now().UnixMilli(),
+			"version": gorm.Expr("version + 1"),
+			"utime":   time.Now().UnixMilli(),
 		})
 	if result.Error != nil {
 		return fmt.Errorf("%w: 批量续约数据库操作失败: %w", errs.ErrTaskRenewFailed, result.Error)
@@ -380,10 +379,10 @@ func (g *GORMTaskDAO) isUniqueConstraintError(err error) bool {
 	return errors.Is(err, gorm.ErrDuplicatedKey)
 }
 
-func (g *GORMTaskDAO) List(ctx context.Context, bizID int64, offset, limit int) ([]*Task, error) {
+func (g *GORMTaskDAO) List(ctx context.Context, offset, limit int) ([]*Task, error) {
 	var tasks []*Task
 	err := g.db.WithContext(ctx).
-		Where("biz_id = ?", bizID).
+		Where("biz_id = ?", 0).
 		Order("id DESC").
 		Offset(offset).
 		Limit(limit).
@@ -391,9 +390,9 @@ func (g *GORMTaskDAO) List(ctx context.Context, bizID int64, offset, limit int) 
 	return tasks, err
 }
 
-func (g *GORMTaskDAO) Count(ctx context.Context, bizID int64) (int64, error) {
+func (g *GORMTaskDAO) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := g.db.WithContext(ctx).Model(&Task{}).Where("biz_id = ?", bizID).Count(&count).Error
+	err := g.db.WithContext(ctx).Model(&Task{}).Where("biz_id = ?", 0).Count(&count).Error
 	return count, err
 }
 
@@ -408,12 +407,9 @@ func (g *GORMTaskDAO) Update(ctx context.Context, task Task) error {
 			"grpc_config":           task.GrpcConfig,
 			"http_config":           task.HTTPConfig,
 			"retry_config":          task.RetryConfig,
-			"schedule_params":       task.ScheduleParams,
 			"max_execution_seconds": task.MaxExecutionSeconds,
-			"next_time":             task.NextTime,
 			"version":               gorm.Expr("version + 1"),
 			"utime":                 time.Now().UnixMilli(),
-			"metadata":              task.Metadata,
 		})
 
 	if res.Error != nil {

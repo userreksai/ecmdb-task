@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	reporterv1 "github.com/Duke1616/etask/api/proto/gen/etask/reporter/v1"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	reporterv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/reporter/v1"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -25,7 +25,6 @@ type TaskLogger interface {
 
 // bufferTaskLogger 带缓冲和脱敏功能的日志记录器
 type bufferTaskLogger struct {
-	ctx         context.Context // 任务执行的原生上下文，承载多租户信息
 	executionID int64
 	reporter    reporterv1.ReporterServiceClient
 	sysLogger   *elog.Component
@@ -38,9 +37,8 @@ type bufferTaskLogger struct {
 	done       chan struct{} // 关闭信号
 }
 
-func newTaskLogger(ctx context.Context, executionID int64, reporter reporterv1.ReporterServiceClient, sysLogger *elog.Component, masks []string) TaskLogger {
+func newTaskLogger(executionID int64, reporter reporterv1.ReporterServiceClient, sysLogger *elog.Component, masks []string) TaskLogger {
 	l := &bufferTaskLogger{
-		ctx:         ctx,
 		executionID: executionID,
 		reporter:    reporter,
 		sysLogger:   sysLogger,
@@ -108,13 +106,7 @@ func (l *bufferTaskLogger) flush() {
 
 	// LogOnly=true 表示"仅上传日志"，调度节点收到后只保存日志，跳过状态机处理。
 	// 这样后台定时 flush goroutine 不会干扰主流程的状态迁移。
-	// 完美复用任务的原生 context，包含多租户及业务 ID 信息
-	reportCtx := l.ctx
-	if reportCtx == nil {
-		reportCtx = context.Background()
-	}
-
-	_, err := l.reporter.Report(reportCtx, &reporterv1.ReportRequest{
+	_, err := l.reporter.Report(context.Background(), &reporterv1.ReportRequest{
 		ExecutionState: &executorv1.ExecutionState{
 			Id: l.executionID,
 		},

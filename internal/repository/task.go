@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/repository/dao"
-	"github.com/Duke1616/etask/pkg/sqlx"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/pkg/sqlx"
 	"github.com/ecodeclub/ekit/slice"
 )
 
@@ -38,9 +38,9 @@ type TaskRepository interface {
 	// Retry 手动重试任务
 	Retry(ctx context.Context, id, version, nextTime int64) (domain.Task, error)
 	// List 分页获取任务列表
-	List(ctx context.Context, bizID int64, offset, limit int) ([]domain.Task, error)
+	List(ctx context.Context, offset, limit int) ([]domain.Task, error)
 	// Count 获取任务总数
-	Count(ctx context.Context, bizID int64) (int64, error)
+	Count(ctx context.Context) (int64, error)
 	// Update 更新任务配置
 	Update(ctx context.Context, task domain.Task) error
 	// Delete 删除任务
@@ -157,8 +157,8 @@ func (r *taskRepository) Retry(ctx context.Context, id, version, nextTime int64)
 	return r.toDomain(task), nil
 }
 
-func (r *taskRepository) List(ctx context.Context, bizID int64, offset, limit int) ([]domain.Task, error) {
-	tasks, err := r.dao.List(ctx, bizID, offset, limit)
+func (r *taskRepository) List(ctx context.Context, offset, limit int) ([]domain.Task, error) {
+	tasks, err := r.dao.List(ctx, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (r *taskRepository) List(ctx context.Context, bizID int64, offset, limit in
 	}), nil
 }
 
-func (r *taskRepository) Count(ctx context.Context, bizID int64) (int64, error) {
-	return r.dao.Count(ctx, bizID)
+func (r *taskRepository) Count(ctx context.Context) (int64, error) {
+	return r.dao.Count(ctx)
 }
 
 func (r *taskRepository) Update(ctx context.Context, task domain.Task) error {
@@ -181,10 +181,6 @@ func (r *taskRepository) Delete(ctx context.Context, id int64) error {
 
 // toEntity 将领域模型转换为DAO模型
 func (r *taskRepository) toEntity(task domain.Task) dao.Task {
-	if task.MaxExecutionSeconds <= 0 {
-		task.MaxExecutionSeconds = domain.DefaultMaxExecutionSeconds
-	}
-
 	var scheduleNodeID sql.NullString
 	if task.ScheduleNodeID != "" {
 		scheduleNodeID = sql.NullString{String: task.ScheduleNodeID, Valid: true}
@@ -210,14 +206,8 @@ func (r *taskRepository) toEntity(task domain.Task) dao.Task {
 		scheduleParams = sqlx.JSONColumn[map[string]string]{Val: task.ScheduleParams, Valid: true}
 	}
 
-	var metadata sqlx.JSONColumn[map[string]string]
-	if task.Metadata != nil {
-		metadata = sqlx.JSONColumn[map[string]string]{Val: task.Metadata, Valid: true}
-	}
-
 	return dao.Task{
 		ID:                  task.ID,
-		TenantID:            task.TenantID,
 		BizID:               task.BizID,
 		BizKey:              task.BizKey,
 		Name:                task.Name,
@@ -235,17 +225,11 @@ func (r *taskRepository) toEntity(task domain.Task) dao.Task {
 		Ctime:               task.CTime,
 		Utime:               task.UTime,
 		ExecMode:            task.ExecMode.String(),
-		Metadata:            metadata,
 	}
 }
 
 // toDomain 将DAO模型转换为领域模型
 func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
-	maxExecutionSeconds := daoTask.MaxExecutionSeconds
-	if maxExecutionSeconds <= 0 {
-		maxExecutionSeconds = domain.DefaultMaxExecutionSeconds
-	}
-
 	var scheduleNodeID string
 	if daoTask.ScheduleNodeID.Valid {
 		scheduleNodeID = daoTask.ScheduleNodeID.String
@@ -271,14 +255,8 @@ func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
 		scheduleParams = daoTask.ScheduleParams.Val
 	}
 
-	var metadata map[string]string
-	if daoTask.Metadata.Valid {
-		metadata = daoTask.Metadata.Val
-	}
-
 	return domain.Task{
 		ID:                  daoTask.ID,
-		TenantID:            daoTask.TenantID,
 		BizID:               daoTask.BizID,
 		BizKey:              daoTask.BizKey,
 		Name:                daoTask.Name,
@@ -287,7 +265,7 @@ func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
 		GrpcConfig:          grpcConfig,
 		HTTPConfig:          httpConfig,
 		RetryConfig:         retryConfig,
-		MaxExecutionSeconds: maxExecutionSeconds,
+		MaxExecutionSeconds: daoTask.MaxExecutionSeconds,
 		ScheduleParams:      scheduleParams,
 		ScheduleNodeID:      scheduleNodeID,
 		NextTime:            daoTask.NextTime,
@@ -296,6 +274,5 @@ func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
 		UTime:               daoTask.Utime,
 		CTime:               daoTask.Ctime,
 		ExecMode:            domain.ExecMode(daoTask.ExecMode),
-		Metadata:            metadata,
 	}
 }

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/repository/dao"
-	"github.com/Duke1616/etask/pkg/sqlx"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/pkg/sqlx"
 	"github.com/ecodeclub/ekit/slice"
 )
 
@@ -38,8 +38,6 @@ type TaskExecutionRepository interface {
 	FindByTaskID(ctx context.Context, taskID int64) ([]domain.TaskExecution, error)
 	// FindByTaskIDs 批量根据一批任务ID查找它们对应的所有执行记录
 	FindByTaskIDs(ctx context.Context, taskIDs []int64) ([]domain.TaskExecution, error)
-	// ListByTaskID 根据任务ID分页查找执行记录
-	ListByTaskID(ctx context.Context, taskID int64, offset, limit int) ([]domain.TaskExecution, int64, error)
 	// FindExecutionByTaskIDAndPlanExecID 根据任务ID和执行计划ID查找执行记录
 	FindExecutionByTaskIDAndPlanExecID(ctx context.Context, taskID int64, planExecID int64) (domain.TaskExecution, error)
 	// FindTimeoutExecutions 查找超时的执行记录
@@ -88,22 +86,6 @@ func (r *taskExecutionRepository) FindByTaskIDs(ctx context.Context, taskIDs []i
 	}), nil
 }
 
-func (r *taskExecutionRepository) ListByTaskID(ctx context.Context, taskID int64, offset, limit int) ([]domain.TaskExecution, int64, error) {
-	daoExecutions, err := r.dao.ListByTaskID(ctx, taskID, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	total, err := r.dao.CountByTaskID(ctx, taskID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return slice.Map(daoExecutions, func(_ int, src dao.TaskExecution) domain.TaskExecution {
-		return r.toDomain(src)
-	}), total, nil
-}
-
 func (r *taskExecutionRepository) FindExecutionsByPlanExecID(ctx context.Context, planExecID int64) (map[int64]domain.TaskExecution, error) {
 	daoExecutions, err := r.dao.FindExecutionByPlanID(ctx, planExecID)
 	if err != nil {
@@ -130,13 +112,9 @@ func (r *taskExecutionRepository) Create(ctx context.Context, execution domain.T
 	if err != nil {
 		return domain.TaskExecution{}, fmt.Errorf("获取Task信息失败: %w", err)
 	}
+	// 创建TaskExecution
 
 	execution.Task = completeTask
-	// 自动继承 Task 的 TenantID（后台调度等无租户上下文的场景）
-	if execution.TenantID == 0 {
-		execution.TenantID = completeTask.TenantID
-	}
-
 	created, err := r.dao.Create(ctx, r.toEntity(execution))
 	if err != nil {
 		return domain.TaskExecution{}, err
@@ -238,8 +216,7 @@ func (r *taskExecutionRepository) toEntity(execution domain.TaskExecution) dao.T
 	}
 
 	return dao.TaskExecution{
-		ID:       execution.ID,
-		TenantID: execution.TenantID,
+		ID: execution.ID,
 		// 从Task展开的冗余字段
 		TaskID:                  execution.Task.ID,
 		TaskName:                execution.Task.Name,
@@ -295,8 +272,7 @@ func (r *taskExecutionRepository) toDomain(daoExecution dao.TaskExecution) domai
 	}
 
 	return domain.TaskExecution{
-		ID:       daoExecution.ID,
-		TenantID: daoExecution.TenantID,
+		ID: daoExecution.ID,
 		Task: domain.Task{
 			ID:                  daoExecution.TaskID,
 			Name:                daoExecution.TaskName,

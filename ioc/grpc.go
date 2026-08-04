@@ -5,15 +5,15 @@ import (
 	"os"
 	"time"
 
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	reporterv1 "github.com/Duke1616/etask/api/proto/gen/etask/reporter/v1"
-	taskv1 "github.com/Duke1616/etask/api/proto/gen/etask/task/v1"
-	grpcapi "github.com/Duke1616/etask/internal/grpc"
-	"github.com/Duke1616/etask/internal/grpc/scripts"
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/pkg/grpc/pool"
-	registrysdk "github.com/Duke1616/etask/pkg/grpc/registry"
-	"github.com/Duke1616/etask/sdk/executor"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	reporterv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/reporter/v1"
+	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
+	grpcapi "github.com/userreksai/ecmdb-task/internal/grpc"
+	"github.com/userreksai/ecmdb-task/internal/grpc/scripts"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
+	registrysdk "github.com/userreksai/ecmdb-task/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 )
@@ -72,15 +72,9 @@ func InitSchedulerNodeGRPCServer(registry registrysdk.Registry, reporter *grpcap
 
 func InitExecutorServiceGRPCClients(reg registrysdk.Registry) *pool.Clients[executorv1.ExecutorServiceClient] {
 	const defaultTimeout = time.Second
-	var cfg grpcpkg.ClientConfig
-	if err := viper.UnmarshalKey("grpc.client.executor", &cfg); err != nil {
-		panic(err)
-	}
-
 	return pool.NewClients(
 		reg,
 		defaultTimeout,
-		cfg.AuthToken,
 		func(conn *grpc.ClientConn) executorv1.ExecutorServiceClient {
 			return executorv1.NewExecutorServiceClient(conn)
 		})

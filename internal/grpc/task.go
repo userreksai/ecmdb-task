@@ -5,11 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	taskv1 "github.com/Duke1616/etask/api/proto/gen/etask/task/v1"
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/bizid"
+	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/bizid"
 	"github.com/gotomicro/ego/core/elog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -77,12 +77,12 @@ func (s *TaskServer) toDomainTask(bizID int64, req *taskv1.CreateTaskRequest) do
 		ScheduleParams:      req.GetScheduleParams(),
 		GrpcConfig: &domain.GrpcConfig{
 			ServiceName: req.GrpcConfig.GetServiceName(),
+			AuthToken:   req.GrpcConfig.GetAuthToken(),
 			HandlerName: req.GrpcConfig.GetHandlerName(),
 			Params:      req.GrpcConfig.GetParams(),
 		},
 		HTTPConfig: &domain.HTTPConfig{
 			Endpoint: req.HttpConfig.GetEndpoint(),
-			Headers:  req.HttpConfig.GetHeaders(),
 			Params:   req.HttpConfig.GetParams(),
 		},
 		RetryConfig: &domain.RetryConfig{
@@ -205,6 +205,7 @@ func (s *TaskServer) toProtoGrpcConfig(cfg *domain.GrpcConfig) *taskv1.GrpcConfi
 	}
 	return &taskv1.GrpcConfig{
 		ServiceName: cfg.ServiceName,
+		AuthToken:   cfg.AuthToken,
 		HandlerName: cfg.HandlerName,
 		Params:      cfg.Params,
 	}
@@ -216,7 +217,6 @@ func (s *TaskServer) toProtoHTTPConfig(cfg *domain.HTTPConfig) *taskv1.HTTPConfi
 	}
 	return &taskv1.HTTPConfig{
 		Endpoint: cfg.Endpoint,
-		Headers:  cfg.Headers,
 		Params:   cfg.Params,
 	}
 }

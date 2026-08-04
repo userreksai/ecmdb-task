@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	"github.com/Duke1616/etask/internal/repository"
-	"github.com/Duke1616/etask/internal/service/task"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	"github.com/userreksai/ecmdb-task/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -64,10 +64,6 @@ func (s *AgentServer) PullTask(ctx context.Context, req *executorv1.PullTaskRequ
 					TaskName:        exec.Task.Name,
 					TaskHandlerName: handlerName,
 					Params:          exec.GRPCParams(),
-					// 在 PULL (拉取) 模式下，因为 Agent 边缘节点的长轮询请求是系统级无租户背景发起的，
-					// gRPC 链路请求头中无法携带租户 Metadata。因此必须将任务所属的 TenantID
-					// 显式塞入 proto Payload 消息体中下发，供 Agent 侧反向提取并重建租户 context 树。
-					TenantId: exec.TenantID,
 				},
 			}, nil
 		}
@@ -113,7 +109,7 @@ func (s *AgentServer) ListTaskExecutions(ctx context.Context, req *executorv1.Li
 
 // GetExecutionLogs 获取执行日志
 func (s *AgentServer) GetExecutionLogs(ctx context.Context, req *executorv1.GetExecutionLogsRequest) (*executorv1.GetExecutionLogsResponse, error) {
-	logs, _, err := s.logSvc.GetLogs(ctx, req.GetExecutionId(), req.GetMinId(), int(req.GetLimit()))
+	logs, err := s.logSvc.GetLogs(ctx, req.GetExecutionId(), req.GetMinId(), int(req.GetLimit()))
 	if err != nil {
 		s.logger.Error("获取日志失败", elog.Int64("executionID", req.GetExecutionId()), elog.FieldErr(err))
 		return nil, err

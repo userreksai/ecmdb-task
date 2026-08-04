@@ -79,32 +79,29 @@ func (b *InterceptorBuilder) JwtAuthInterceptor() grpc.UnaryServerInterceptor {
 		// 提取metadata
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "请求缺少元数据 metadata")
+			return nil, status.Error(codes.Unauthenticated, "missing metadata")
 		}
 
 		// 获取Authorization头
 		authHeaders := md.Get(AuthorizationKey)
 		if len(authHeaders) == 0 {
-			return nil, status.Error(codes.Unauthenticated, "请求缺少授权令牌 Authorization")
+			return nil, status.Error(codes.Unauthenticated, "authorization token is required")
 		}
 
 		// 处理Bearer Token格式
 		tokenStr := authHeaders[0]
 
 		// 使用现有JwtAuth解码验证
-		claims, err := b.Decode(tokenStr)
+		_, err := b.Decode(tokenStr)
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
-				return nil, status.Error(codes.Unauthenticated, "授权令牌已过期")
+				return nil, status.Error(codes.Unauthenticated, "token expired")
 			}
 			if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-				return nil, status.Error(codes.Unauthenticated, "授权令牌签名无效")
+				return nil, status.Error(codes.Unauthenticated, "invalid signature")
 			}
-			return nil, status.Error(codes.Unauthenticated, "无效的授权令牌: "+err.Error())
+			return nil, status.Error(codes.Unauthenticated, "invalid token: "+err.Error())
 		}
-
-		// 将解密出的受信 Claims 提取并注入 Context
-		ctx = Set(ctx, claims)
 
 		// 认证通过，继续处理
 		return handler(ctx, req)

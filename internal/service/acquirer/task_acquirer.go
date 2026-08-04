@@ -3,8 +3,8 @@ package acquirer
 import (
 	"context"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/repository"
 )
 
 var _ TaskAcquirer = &MySQLTaskAcquirer{}

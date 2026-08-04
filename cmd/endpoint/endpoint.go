@@ -7,7 +7,7 @@ import (
 	"time"
 
 	endpointv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/endpoint/v1"
-	initIoc "github.com/Duke1616/etask/ioc"
+	initIoc "github.com/userreksai/ecmdb-task/ioc"
 
 	"github.com/gotomicro/ego/server/egin"
 	"github.com/spf13/cobra"

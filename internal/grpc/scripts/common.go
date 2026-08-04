@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -67,21 +67,10 @@ func NewScriptExecutor(
 func (e *ScriptExecutor) Run(ctx *executor.Context) error {
 	logger := ctx.Logger()
 
-	// 1. 获取参数 (支持动态解析)
-	code, err := ctx.GetResolvedParam("code")
-	if err != nil {
-		return fmt.Errorf("resolve code param failed: %w", err)
-	}
-
-	args, err := ctx.GetResolvedParam("args")
-	if err != nil {
-		return fmt.Errorf("resolve args param failed: %w", err)
-	}
-
-	vars, err := ctx.GetResolvedParam("variables")
-	if err != nil {
-		return fmt.Errorf("resolve variables param failed: %w", err)
-	}
+	// 1. 获取参数
+	code := ctx.Param("code")
+	args := ctx.Param("args")
+	vars := ctx.Param("variables")
 
 	if code == "" {
 		return fmt.Errorf("[%s] code parameter is required", e.language)

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/internal/repository"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -30,7 +30,7 @@ type Service interface {
 	// RetryByName 根据名称重试任务
 	RetryByName(ctx context.Context, name string) (domain.Task, error)
 	// List 分页获取任务列表
-	List(ctx context.Context, bizID int64, offset, limit int) ([]domain.Task, int64, error)
+	List(ctx context.Context, offset, limit int) ([]domain.Task, int64, error)
 	// Update 更新任务配置
 	Update(ctx context.Context, task domain.Task) error
 	// Delete 删除任务
@@ -53,11 +53,15 @@ func NewService(repo repository.TaskRepository) Service {
 }
 
 func (s *service) Create(ctx context.Context, task domain.Task) (domain.Task, error) {
-	s.setDefaults(&task)
-	if err := s.setNextScheduleTime(&task); err != nil {
-		return domain.Task{}, err
+	// 计算并设置下次执行时间
+	nextTime, err := task.CalculateNextTime()
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("%w: %w", errs.ErrInvalidTaskCronExpr, err)
 	}
-
+	if nextTime.IsZero() {
+		return domain.Task{}, errs.ErrInvalidTaskCronExpr
+	}
+	task.NextTime = nextTime.UnixMilli()
 	return s.repo.Create(ctx, task)
 }
 
@@ -71,22 +75,27 @@ func (s *service) UpdateNextTime(ctx context.Context, id int64) (domain.Task, er
 		return domain.Task{}, err
 	}
 
-	// 一次性任务：如果 NextTime 在过去（或为0表示立即执行），说明已执行完成，直接设置为 COMPLETED
+	// 一次性任务：如果 NextTime 在过去，说明已执行完成，直接设置为 COMPLETED
 	// 这样可以避免 CalculateNextTime 计算出下一次时间
-	if task.Type.IsOneTime() && task.NextTime >= 0 && task.NextTime < time.Now().UnixMilli() {
+	if task.Type.IsOneTime() && task.NextTime > 0 && task.NextTime < time.Now().UnixMilli() {
 		return s.repo.UpdateStatus(ctx, id, domain.TaskStatusCompleted)
 	}
 
 	// 计算下次执行时间
-	if err = s.setNextScheduleTime(&task); err != nil {
-		return domain.Task{}, err
+	nextTime, err := task.CalculateNextTime()
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("%w: %w", errs.ErrInvalidTaskCronExpr, err)
 	}
 
-	// 如果下次执行时间为零值，说明 cron 不再触发，直接返回（保持原状态）
-	if task.NextTime == 0 {
+	// 如果下次执行时间为零值
+	if nextTime.IsZero() {
+		// 一次性任务：已经是 INACTIVE 状态（由上面的判断设置）
+		// 定时任务：cron 不再触发，直接返回（保持原状态）
 		return task, nil
 	}
 
+	// 更新下次执行时间
+	task.NextTime = nextTime.UnixMilli()
 	return s.repo.UpdateNextTime(ctx, task.ID, task.Version, task.NextTime)
 }
 
@@ -131,7 +140,7 @@ func (s *service) retry(ctx context.Context, task domain.Task) (domain.Task, err
 	return s.repo.Retry(ctx, task.ID, task.Version, time.Now().UnixMilli())
 }
 
-func (s *service) List(ctx context.Context, bizID int64, offset, limit int) ([]domain.Task, int64, error) {
+func (s *service) List(ctx context.Context, offset, limit int) ([]domain.Task, int64, error) {
 	var (
 		tasks []domain.Task
 		total int64
@@ -139,12 +148,12 @@ func (s *service) List(ctx context.Context, bizID int64, offset, limit int) ([]d
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		var err error
-		tasks, err = s.repo.List(ctx, bizID, offset, limit)
+		tasks, err = s.repo.List(ctx, offset, limit)
 		return err
 	})
 	eg.Go(func() error {
 		var err error
-		total, err = s.repo.Count(ctx, bizID)
+		total, err = s.repo.Count(ctx)
 		return err
 	})
 	if err := eg.Wait(); err != nil {
@@ -154,45 +163,12 @@ func (s *service) List(ctx context.Context, bizID int64, offset, limit int) ([]d
 }
 
 func (s *service) Update(ctx context.Context, task domain.Task) error {
-	s.setDefaults(&task)
+	// 针对更新配置，可能需要重新计算下次执行时间（且只有在任务是 ACTIVE 状态且非正在运行中才安全）
+	// 但通常简单的字段更新（如名称）不影响调度。
+	// 如果 CronExpr 变了，则必须重新计算。
 
-	// 1. 获取原任务信息用于比对
-	oldTask, err := s.repo.GetByID(ctx, task.ID)
-	if err != nil {
-		return err
-	}
-
-	// 2. 如果 Cron 表达式发生变化，重新计算下次执行时间
-	if oldTask.CronExpr != task.CronExpr {
-		if err = s.setNextScheduleTime(&task); err != nil {
-			return err
-		}
-	} else {
-		task.NextTime = oldTask.NextTime
-	}
-
+	// 这里简化处理，直接调用仓库更新。复杂逻辑应根据业务需求在 domain 层或在此处完善。
 	return s.repo.Update(ctx, task)
-}
-
-func (s *service) setDefaults(task *domain.Task) {
-	if task.MaxExecutionSeconds <= 0 {
-		task.MaxExecutionSeconds = domain.DefaultMaxExecutionSeconds
-	}
-}
-
-func (s *service) setNextScheduleTime(task *domain.Task) error {
-	nextTime, err := task.CalculateNextTime()
-	if err != nil {
-		return fmt.Errorf("%w: %w", errs.ErrInvalidTaskCronExpr, err)
-	}
-
-	if nextTime.IsZero() {
-		task.NextTime = 0
-	} else {
-		task.NextTime = nextTime.UnixMilli()
-	}
-
-	return nil
 }
 
 func (s *service) Delete(ctx context.Context, id int64) error {

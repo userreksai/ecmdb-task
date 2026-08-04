@@ -3,8 +3,8 @@ package domain
 import (
 	"time"
 
-	taskv1 "github.com/Duke1616/etask/api/proto/gen/etask/task/v1"
-	"github.com/Duke1616/etask/pkg/retry"
+	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
+	"github.com/userreksai/ecmdb-task/pkg/retry"
 	"github.com/robfig/cron/v3"
 )
 
@@ -39,8 +39,6 @@ func (tt TaskType) IsOneTime() bool {
 	return tt == TaskTypeOneTime
 }
 
-const DefaultMaxExecutionSeconds int64 = 24 * 60 * 60
-
 // IsRecurring 判断是否为定时任务
 func (tt TaskType) IsRecurring() bool {
 	return tt == TaskTypeRecurring
@@ -48,7 +46,6 @@ func (tt TaskType) IsRecurring() bool {
 
 type Task struct {
 	ID                  int64
-	TenantID            int64  // 租户ID，多租户隔离
 	BizID               int64  // 业务模块 ID，0 表示独立任务，>0 表示由业务系统创建
 	BizKey              string // 业务方唯一标识，如工单号 "order_1448"
 	Name                string
@@ -66,7 +63,6 @@ type Task struct {
 	CTime               int64             // 创建时间戳
 	UTime               int64             // 更新时间戳
 	ExecMode            ExecMode          // 执行模式：PUSH 或 PULL
-	Metadata            map[string]string // 任务参数元数据 (存储绑定关系或模式)
 }
 
 // ExecMode 执行模式
@@ -132,6 +128,7 @@ func (r *RetryConfig) ToRetryComponentConfig() retry.Config {
 // GrpcConfig gRPC配置
 type GrpcConfig struct {
 	ServiceName string            `json:"serviceName"` // 服务名称
+	AuthToken   string            `json:"authToken"`   // 认证 token
 	HandlerName string            `json:"handlerName"` // 执行节点支持的方法名称， 如 shell、python、demo
 	Params      map[string]string `json:"params"`      // 传递参数
 }
@@ -139,7 +136,6 @@ type GrpcConfig struct {
 // HTTPConfig HTTP配置
 type HTTPConfig struct {
 	Endpoint string            `json:"endpoint"`
-	Headers  map[string]string `json:"headers"`
 	Params   map[string]string `json:"params"`
 }
 

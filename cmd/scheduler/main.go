@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/Duke1616/etask/cmd/endpoint"
-	"github.com/Duke1616/etask/ioc"
+	"github.com/userreksai/ecmdb-task/cmd/endpoint"
+	"github.com/userreksai/ecmdb-task/ioc"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gotomicro/ego"
 	"github.com/gotomicro/ego/core/elog"
@@ -48,14 +48,19 @@ func startServer() {
 	base := ioc.InitBase()
 	app := &ioc.App{Base: base}
 
-	// 2. 按模式加载所需模块
-	app.LoadByModes(base, []string{ioc.ModeScheduler})
+	// 2. 物理加载所需模块
+	app.Load(ioc.InitWebModule(base))             // 加载管理界面路由
+	app.Load(ioc.InitSchedulerModule(base))       // 加载调度中心业务逻辑
+	app.Load(ioc.InitSchedulerServerModule(base)) // 加载调度中心 gRPC Server (含服务注册)
 
-	// 3. 启动后台任务和服务
+	// 3. 启动后台任务
 	ctx := context.Background()
-	app.StartBackgroundTasks(ctx)
+	app.StartBackgroundTasks(ctx, []string{ioc.ModeScheduler})
 
-	if err := ego.New().Serve(app.GetServers()...).Run(); err != nil {
+	// 4. 运行服务
+	egoApp := ego.New()
+	servers := app.GetServers([]string{ioc.ModeScheduler})
+	if err := egoApp.Serve(servers...).Run(); err != nil {
 		elog.Panic("startup", elog.FieldErr(err))
 	}
 }

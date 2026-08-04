@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/pkg/grpc/pool"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -35,7 +35,7 @@ func (r *GRPCInvoker) Name() string {
 
 func (r *GRPCInvoker) Run(ctx context.Context, exec domain.TaskExecution) (domain.ExecutionState, error) {
 	// 获取 client
-	client := r.grpcClients.Get(exec.Task.GrpcConfig.ServiceName)
+	client := r.grpcClients.Get(exec.Task.GrpcConfig.ServiceName, exec.Task.GrpcConfig.AuthToken)
 
 	// 设置调用超时(30秒), 防止无 executor 节点时无限等待
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -47,7 +47,6 @@ func (r *GRPCInvoker) Run(ctx context.Context, exec domain.TaskExecution) (domai
 		TaskName:        exec.Task.Name,
 		TaskHandlerName: exec.Task.GrpcConfig.HandlerName,
 		Params:          exec.GRPCParams(),
-		TenantId:        exec.Task.TenantID,
 	})
 
 	if err != nil {
@@ -58,7 +57,7 @@ func (r *GRPCInvoker) Run(ctx context.Context, exec domain.TaskExecution) (domai
 }
 
 func (r *GRPCInvoker) Prepare(ctx context.Context, exec domain.TaskExecution) (map[string]string, error) {
-	client := r.grpcClients.Get(exec.Task.GrpcConfig.ServiceName)
+	client := r.grpcClients.Get(exec.Task.GrpcConfig.ServiceName, exec.Task.GrpcConfig.AuthToken)
 
 	// 设置调用超时(30秒), 防止无 executor 节点时无限等待
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -70,7 +69,6 @@ func (r *GRPCInvoker) Prepare(ctx context.Context, exec domain.TaskExecution) (m
 		TaskId:   exec.Task.ID,
 		TaskName: exec.Task.Name,
 		Params:   exec.GRPCParams(),
-		Metadata: exec.Task.Metadata,
 	})
 
 	if err != nil {

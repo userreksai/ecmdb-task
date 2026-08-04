@@ -2,7 +2,6 @@ package bizid
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -38,21 +37,11 @@ func SetTask(ctx context.Context) context.Context {
 func FromContext(ctx context.Context) (int64, error) {
 	v := ctx.Value(ContextKey)
 	if v == nil {
-		return 0, fmt.Errorf("context 中缺少 biz_id")
+		return 0, fmt.Errorf("context 中缺少 %s", ContextKey)
 	}
-
-	switch val := v.(type) {
-	case int64:
-		return val, nil
-	case int:
-		return int64(val), nil
-	case float64:
-		return int64(val), nil
-	case json.Number:
-		return val.Int64()
-	case string:
-		return strconv.ParseInt(val, 10, 64)
-	default:
-		return 0, fmt.Errorf("%s 类型不支持: %T", ContextKey, v)
+	id, ok := v.(int64)
+	if !ok {
+		return 0, fmt.Errorf("%s 类型断言失败，实际类型: %T", ContextKey, v)
 	}
+	return id, nil
 }

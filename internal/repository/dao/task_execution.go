@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/pkg/sqlx"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/pkg/sqlx"
 	"gorm.io/gorm"
 )
 
@@ -25,8 +25,7 @@ const (
 
 // TaskExecution 任务执行记录表DAO对象
 type TaskExecution struct {
-	ID       int64 `gorm:"type:bigint;primaryKey;autoIncrement;"`
-	TenantID int64 `gorm:"type:bigint unsigned;not null;default:0;index;comment:租户ID"`
+	ID int64 `gorm:"type:bigint;primaryKey;autoIncrement;"`
 	// 下面都是创建当前 TaskExecution 时从对应的Task直接拷贝过来的冗余信息
 	TaskID                  int64                               `gorm:"type:bigint;not null;comment:'任务ID'"`
 	TaskName                string                              `gorm:"type:varchar(255);not null;comment:'任务名称'"`
@@ -86,10 +85,6 @@ type TaskExecutionDAO interface {
 	FindExecutionByPlanID(ctx context.Context, planExecID int64) (map[int64]TaskExecution, error)
 	// FindByTaskID 根据任务ID查找执行记录
 	FindByTaskID(ctx context.Context, taskID int64) ([]TaskExecution, error)
-	// ListByTaskID 根据任务ID分页查找执行记录
-	ListByTaskID(ctx context.Context, taskID int64, offset, limit int) ([]TaskExecution, error)
-	// CountByTaskID 根据任务ID统计执行记录总数
-	CountByTaskID(ctx context.Context, taskID int64) (int64, error)
 	// FindByTaskIDs 批量根据任务ID查找执行记录
 	FindByTaskIDs(ctx context.Context, taskIDs []int64) ([]TaskExecution, error)
 	// FindExecutionByTaskIDAndPlanExecID 根据任务ID和执行计划ID查找执行记录
@@ -120,32 +115,6 @@ func (g *GORMTaskExecutionDAO) FindByTaskID(ctx context.Context, taskID int64) (
 		return nil, fmt.Errorf("查询任务 %d 的执行记录失败: %w", taskID, err)
 	}
 	return executions, nil
-}
-
-func (g *GORMTaskExecutionDAO) ListByTaskID(ctx context.Context, taskID int64, offset, limit int) ([]TaskExecution, error) {
-	var executions []TaskExecution
-	err := g.db.WithContext(ctx).
-		Where("task_id = ?", taskID).
-		Order("ctime DESC").
-		Offset(offset).
-		Limit(limit).
-		Find(&executions).Error
-	if err != nil {
-		return nil, fmt.Errorf("分页查询任务 %d 的执行记录失败: %w", taskID, err)
-	}
-	return executions, nil
-}
-
-func (g *GORMTaskExecutionDAO) CountByTaskID(ctx context.Context, taskID int64) (int64, error) {
-	var count int64
-	err := g.db.WithContext(ctx).
-		Model(&TaskExecution{}).
-		Where("task_id = ?", taskID).
-		Count(&count).Error
-	if err != nil {
-		return 0, fmt.Errorf("统计任务 %d 的执行记录总数失败: %w", taskID, err)
-	}
-	return count, nil
 }
 
 func (g *GORMTaskExecutionDAO) FindByTaskIDs(ctx context.Context, taskIDs []int64) ([]TaskExecution, error) {

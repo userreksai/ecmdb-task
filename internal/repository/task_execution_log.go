@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
 	"github.com/ecodeclub/ekit/slice"
 )
 

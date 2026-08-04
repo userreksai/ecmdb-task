@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"sync"
 
-	reporterv1 "github.com/Duke1616/etask/api/proto/gen/etask/reporter/v1"
+	reporterv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/reporter/v1"
 	"github.com/gotomicro/ego/core/elog"
 )
 

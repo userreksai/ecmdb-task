@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Duke1616/etask/internal/agent/domain"
-	"github.com/Duke1616/etask/internal/agent/service"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/internal/agent/domain"
+	"github.com/userreksai/ecmdb-task/internal/agent/service"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"github.com/ecodeclub/mq-api"
 	"github.com/gotomicro/ego/core/elog"
 )

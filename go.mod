@@ -1,4 +1,4 @@
-module github.com/Duke1616/etask
+module github.com/userreksai/ecmdb-task
 
 go 1.25.0
 

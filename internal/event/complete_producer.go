@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Duke1616/etask/pkg/mpx"
+	"github.com/userreksai/ecmdb-task/pkg/mpx"
 	"github.com/ecodeclub/mq-api"
 )
 

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Duke1616/etask/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
 
 	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/spf13/viper"

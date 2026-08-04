@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/bizid"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/bizid"
 	"github.com/ecodeclub/mq-api"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/gotomicro/ego/core/elog"
 )
 

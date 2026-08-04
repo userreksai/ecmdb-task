@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/pkg/sqlx"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/pkg/sqlx"
 	"gorm.io/gorm"
 )
 

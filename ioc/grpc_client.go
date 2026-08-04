@@ -2,8 +2,8 @@ package ioc
 
 import (
 	endpointv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/endpoint/v1"
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 )

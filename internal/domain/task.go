@@ -3,8 +3,8 @@ package domain
 import (
 	"time"
 
-	taskv1 "github.com/Duke1616/etask/api/proto/gen/etask/task/v1"
-	"github.com/Duke1616/etask/pkg/retry"
+	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
+	"github.com/userreksai/ecmdb-task/pkg/retry"
 	"github.com/robfig/cron/v3"
 )
 

@@ -3,8 +3,8 @@ package pool
 import (
 	"time"
 
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"github.com/ecodeclub/ekit/syncx"
 	"google.golang.org/grpc"
 )

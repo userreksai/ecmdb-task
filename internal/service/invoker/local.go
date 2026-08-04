@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Duke1616/etask/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/domain"
 )
 
 var _ Invoker = &LocalInvoker{}

@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"github.com/Duke1616/etask/internal/agent/service"
-	"github.com/Duke1616/etask/internal/agent/web"
+	"github.com/userreksai/ecmdb-task/internal/agent/service"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
 )
 
 type Service = service.Service

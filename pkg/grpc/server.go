@@ -6,9 +6,9 @@ import (
 	"net"
 	"os"
 
-	"github.com/Duke1616/etask/pkg/grpc/interceptors"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
-	"github.com/Duke1616/etask/pkg/netx"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/pkg/netx"
 	"github.com/gotomicro/ego/core/constant"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/server"

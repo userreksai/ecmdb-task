@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/internal/repository"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	reporterv1 "github.com/Duke1616/etask/api/proto/gen/etask/reporter/v1"
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/tenant"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	reporterv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/reporter/v1"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/tenant"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"github.com/ecodeclub/ekit/syncx"
 	"github.com/gotomicro/ego/core/elog"
 )

@@ -3,7 +3,7 @@ package sse
 import (
 	"sync"
 
-	"github.com/Duke1616/etask/pkg/sse"
+	"github.com/userreksai/ecmdb-task/pkg/sse"
 )
 
 const (

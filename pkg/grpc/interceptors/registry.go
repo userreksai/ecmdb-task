@@ -1,9 +1,9 @@
 package interceptors
 
 import (
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/bizid"
-	jwtinterceptor "github.com/Duke1616/etask/pkg/grpc/interceptors/jwt"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors/tenant"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/bizid"
+	jwtinterceptor "github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/jwt"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/tenant"
 	"google.golang.org/grpc"
 )
 

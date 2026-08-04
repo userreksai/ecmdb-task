@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/errs"
-	"github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/pkg/grpc/balancer"
-	"github.com/Duke1616/etask/pkg/grpc/pool"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/errs"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/balancer"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
 	"github.com/gotomicro/ego/core/elog"
 )
 

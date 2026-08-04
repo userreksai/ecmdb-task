@@ -5,12 +5,12 @@ package agent
 import (
 	"encoding/json"
 
-	"github.com/Duke1616/etask/internal/agent/domain"
-	event2 "github.com/Duke1616/etask/internal/agent/event"
-	"github.com/Duke1616/etask/internal/agent/service"
-	"github.com/Duke1616/etask/internal/agent/web"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
-	"github.com/Duke1616/etask/pkg/grpc/registry/etcd"
+	"github.com/userreksai/ecmdb-task/internal/agent/domain"
+	event2 "github.com/userreksai/ecmdb-task/internal/agent/event"
+	"github.com/userreksai/ecmdb-task/internal/agent/service"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry/etcd"
 	"github.com/ecodeclub/mq-api"
 	"github.com/google/uuid"
 	"github.com/google/wire"

@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 
-	"github.com/Duke1616/etask/internal/agent/event"
-	"github.com/Duke1616/etask/internal/agent/service"
-	"github.com/Duke1616/etask/internal/agent/web"
+	"github.com/userreksai/ecmdb-task/internal/agent/event"
+	"github.com/userreksai/ecmdb-task/internal/agent/service"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
 	"github.com/gotomicro/ego/core/constant"
 	"github.com/gotomicro/ego/server"
 )

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/internal/domain"
-	"github.com/Duke1616/etask/internal/event"
-	"github.com/Duke1616/etask/internal/service/acquirer"
-	"github.com/Duke1616/etask/internal/service/invoker"
-	"github.com/Duke1616/etask/internal/service/task"
-	"github.com/Duke1616/etask/pkg/grpc/balancer"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/event"
+	"github.com/userreksai/ecmdb-task/internal/service/acquirer"
+	"github.com/userreksai/ecmdb-task/internal/service/invoker"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/balancer"
 	"github.com/gotomicro/ego/core/elog"
 )
 

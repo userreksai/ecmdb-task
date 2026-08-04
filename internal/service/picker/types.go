@@ -3,7 +3,7 @@ package picker
 import (
 	"context"
 
-	"github.com/Duke1616/etask/internal/domain"
+	"github.com/userreksai/ecmdb-task/internal/domain"
 )
 
 // ExecutorNodePicker 是执行节点选择器的通用接口。

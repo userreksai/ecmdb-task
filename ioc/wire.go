@@ -4,9 +4,9 @@
 package ioc
 
 import (
-	"github.com/Duke1616/etask/internal/agent"
-	grpcpkg "github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/internal/agent"
+	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 	"github.com/google/wire"
 )
 

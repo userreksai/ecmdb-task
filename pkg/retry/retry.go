@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/pkg/retry/strategy"
+	"github.com/userreksai/ecmdb-task/pkg/retry/strategy"
 )
 
 // NewRetry 当配置不对的时候报错

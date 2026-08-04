@@ -1,9 +1,9 @@
 package ioc
 
 import (
-	executorv1 "github.com/Duke1616/etask/api/proto/gen/etask/executor/v1"
-	"github.com/Duke1616/etask/internal/service/invoker"
-	"github.com/Duke1616/etask/pkg/grpc/pool"
+	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
+	"github.com/userreksai/ecmdb-task/internal/service/invoker"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
 )
 
 func InitInvoker(clients *pool.Clients[executorv1.ExecutorServiceClient]) invoker.Invoker {

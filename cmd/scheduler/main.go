@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/Duke1616/etask/cmd/endpoint"
-	"github.com/Duke1616/etask/ioc"
+	"github.com/userreksai/ecmdb-task/cmd/endpoint"
+	"github.com/userreksai/ecmdb-task/ioc"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gotomicro/ego"
 	"github.com/gotomicro/ego/core/elog"

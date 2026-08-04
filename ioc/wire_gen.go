@@ -7,16 +7,16 @@
 package ioc
 
 import (
-	"github.com/Duke1616/etask/internal/agent"
-	"github.com/Duke1616/etask/internal/agent/web"
-	grpc2 "github.com/Duke1616/etask/internal/grpc"
-	"github.com/Duke1616/etask/internal/repository"
-	"github.com/Duke1616/etask/internal/repository/dao"
-	"github.com/Duke1616/etask/internal/service/task"
-	executor2 "github.com/Duke1616/etask/internal/web/executor"
-	"github.com/Duke1616/etask/internal/web/manager"
-	"github.com/Duke1616/etask/pkg/grpc"
-	"github.com/Duke1616/etask/sdk/executor"
+	"github.com/userreksai/ecmdb-task/internal/agent"
+	"github.com/userreksai/ecmdb-task/internal/agent/web"
+	grpc2 "github.com/userreksai/ecmdb-task/internal/grpc"
+	"github.com/userreksai/ecmdb-task/internal/repository"
+	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	executor2 "github.com/userreksai/ecmdb-task/internal/web/executor"
+	"github.com/userreksai/ecmdb-task/internal/web/manager"
+	"github.com/userreksai/ecmdb-task/pkg/grpc"
+	"github.com/userreksai/ecmdb-task/sdk/executor"
 )
 
 // Injectors from wire.go:

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Duke1616/etask/pkg/grpc/balancer"
-	"github.com/Duke1616/etask/pkg/grpc/interceptors"
-	"github.com/Duke1616/etask/pkg/grpc/registry"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/balancer"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/registry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"

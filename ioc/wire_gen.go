@@ -12,6 +12,7 @@ import (
 	grpc2 "github.com/userreksai/ecmdb-task/internal/grpc"
 	"github.com/userreksai/ecmdb-task/internal/repository"
 	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	"github.com/userreksai/ecmdb-task/internal/service/category"
 	"github.com/userreksai/ecmdb-task/internal/service/task"
 	executor2 "github.com/userreksai/ecmdb-task/internal/web/executor"
 	"github.com/userreksai/ecmdb-task/internal/web/manager"
@@ -116,6 +117,9 @@ func InitWebModule(base *Base) *WebModule {
 	taskDAO := dao.NewGORMTaskDAO(db)
 	taskRepository := repository.NewTaskRepository(taskDAO)
 	service := task.NewService(taskRepository)
+	taskCategoryDAO := dao.NewGORMTaskCategoryDAO(db)
+	taskCategoryRepository := repository.NewTaskCategoryRepository(taskCategoryDAO)
+	categoryService := category.NewService(taskCategoryRepository)
 	taskExecutionLogDAO := dao.NewGORMTaskExecutionLogDAO(db)
 	taskExecutionLogRepository := repository.NewTaskExecutionLogRepository(taskExecutionLogDAO)
 	logService := task.NewLogService(taskExecutionLogRepository)
@@ -126,7 +130,7 @@ func InitWebModule(base *Base) *WebModule {
 	completeProducer := InitCompleteProducer(mq)
 	registry := base.Registry
 	executionService := task.NewExecutionService(string2, taskExecutionRepository, service, logService, completeProducer, registry)
-	handler := manager.NewHandler(service, logService, executionService)
+	handler := manager.NewHandler(service, categoryService, logService, executionService)
 	executorHandler := executor2.NewHandler(registry)
 	client := base.Etcd
 	webHandler := web.NewHandler(client)

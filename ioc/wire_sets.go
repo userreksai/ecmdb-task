@@ -1,15 +1,16 @@
 package ioc
 
 import (
+	"github.com/google/wire"
 	agentSvc "github.com/userreksai/ecmdb-task/internal/agent"
 	"github.com/userreksai/ecmdb-task/internal/agent/web"
 	"github.com/userreksai/ecmdb-task/internal/grpc"
 	"github.com/userreksai/ecmdb-task/internal/repository"
 	"github.com/userreksai/ecmdb-task/internal/repository/dao"
+	categorySvc "github.com/userreksai/ecmdb-task/internal/service/category"
 	taskSvc "github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/userreksai/ecmdb-task/internal/web/executor"
 	"github.com/userreksai/ecmdb-task/internal/web/manager"
-	"github.com/google/wire"
 )
 
 var (
@@ -33,9 +34,12 @@ var (
 	TaskSet = wire.NewSet(
 		InitDB,
 		dao.NewGORMTaskDAO,
+		dao.NewGORMTaskCategoryDAO,
 		repository.NewTaskRepository,
+		repository.NewTaskCategoryRepository,
 		repository.NewTaskExecutionLogRepository,
 		taskSvc.NewService,
+		categorySvc.NewService,
 		taskSvc.NewLogService,
 		manager.NewHandler,
 	)

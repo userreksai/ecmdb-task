@@ -4,21 +4,23 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/userreksai/ecmdb-task/internal/domain"
-	"github.com/userreksai/ecmdb-task/internal/service/task"
-	"github.com/userreksai/ecmdb-task/internal/sse"
-	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/bizid"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/userreksai/ecmdb-task/internal/domain"
+	categorySvc "github.com/userreksai/ecmdb-task/internal/service/category"
+	"github.com/userreksai/ecmdb-task/internal/service/task"
+	"github.com/userreksai/ecmdb-task/internal/sse"
+	"github.com/userreksai/ecmdb-task/pkg/grpc/interceptors/bizid"
 )
 
 var _ ginx.Handler = &Handler{}
 
 type Handler struct {
-	svc     task.Service
-	logSvc  task.LogService
-	execSvc task.ExecutionService
+	svc         task.Service
+	categorySvc categorySvc.Service
+	logSvc      task.LogService
+	execSvc     task.ExecutionService
 	capability.IRegistry
 }
 
@@ -38,12 +40,13 @@ func (h *Handler) IdentifyRoutes(server *gin.Engine) {
 	g.GET("/tasks/:id/executions/stream", ginx.W(h.StreamTaskExecutions))
 }
 
-func NewHandler(svc task.Service, logSvc task.LogService, execSvc task.ExecutionService) *Handler {
+func NewHandler(svc task.Service, categorySvc categorySvc.Service, logSvc task.LogService, execSvc task.ExecutionService) *Handler {
 	return &Handler{
-		svc:       svc,
-		logSvc:    logSvc,
-		execSvc:   execSvc,
-		IRegistry: capability.NewRegistry("task", "manager", "任务管理"),
+		svc:         svc,
+		categorySvc: categorySvc,
+		logSvc:      logSvc,
+		execSvc:     execSvc,
+		IRegistry:   capability.NewRegistry("task", "manager", "任务管理"),
 	}
 }
 
@@ -65,6 +68,23 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.DELETE("/delete/:id", h.Capability("删除任务", "delete").
 		Handle(ginx.W(h.Delete)),
+	)
+
+	// --- 任务分类 ---
+	g.POST("/categories/create", h.Capability("创建任务分类", "category_add").
+		Handle(ginx.B[CreateCategoryReq](h.CreateCategory)),
+	)
+	g.POST("/categories/list", h.Capability("任务分类列表", "category_view").
+		Handle(ginx.B[ListCategoryReq](h.ListCategories)),
+	)
+	g.POST("/categories/update", h.Capability("更新任务分类", "category_edit").
+		Handle(ginx.B[UpdateCategoryReq](h.UpdateCategory)),
+	)
+	g.DELETE("/categories/:id", h.Capability("删除任务分类", "category_delete").
+		Handle(ginx.W(h.DeleteCategory)),
+	)
+	g.POST("/categories/:id/tasks", h.Capability("管理分类任务", "category_assign").
+		Handle(ginx.B[ReplaceCategoryTasksReq](h.ReplaceCategoryTasks)),
 	)
 
 	// --- 执行监控 ---
@@ -279,7 +299,16 @@ func (h *Handler) Create(ctx *ginx.Context, req CreateTaskReq) (ginx.Result, err
 }
 
 func (h *Handler) List(ctx *ginx.Context, req PageReq) (ginx.Result, error) {
-	tasks, total, err := h.svc.List(ctx, bizid.Task, req.Offset, req.Limit)
+	var (
+		tasks []domain.Task
+		total int64
+		err   error
+	)
+	if req.CategoryID != nil || req.Query != "" {
+		tasks, total, err = h.categorySvc.ListTasks(ctx, req.CategoryID, req.Query, req.Offset, req.Limit)
+	} else {
+		tasks, total, err = h.svc.List(ctx, bizid.Task, req.Offset, req.Limit)
+	}
 	if err != nil {
 		return systemErrorResult, err
 	}
@@ -306,6 +335,8 @@ func sliceMap[T, R any](data []T, f func(src T) R) []R {
 func toVO(src domain.Task) TaskVO {
 	vo := TaskVO{
 		ID:                  src.ID,
+		CategoryID:          src.CategoryID,
+		CategoryName:        src.CategoryName,
 		Name:                src.Name,
 		Type:                src.Type.String(),
 		CronExpr:            src.CronExpr,
@@ -343,6 +374,66 @@ func toVO(src domain.Task) TaskVO {
 	}
 
 	return vo
+}
+
+func (h *Handler) CreateCategory(ctx *ginx.Context, req CreateCategoryReq) (ginx.Result, error) {
+	id, err := h.categorySvc.Create(ctx, domain.TaskCategory{Name: req.Name, Description: req.Description})
+	if err != nil {
+		return systemErrorResult, err
+	}
+	return ginx.Result{Data: id, Msg: "success"}, nil
+}
+
+func (h *Handler) ListCategories(ctx *ginx.Context, req ListCategoryReq) (ginx.Result, error) {
+	categories, uncategorized, err := h.categorySvc.List(ctx, req.Keyword)
+	if err != nil {
+		return systemErrorResult, err
+	}
+	return ginx.Result{
+		Data: ListCategoryResp{
+			Categories: sliceMap(categories, func(src domain.TaskCategory) TaskCategoryVO {
+				return TaskCategoryVO{
+					ID: src.ID, Name: src.Name, Description: src.Description,
+					TaskCount: src.TaskCount, CTime: src.CTime, UTime: src.UTime,
+				}
+			}),
+			UncategorizedCount: uncategorized,
+		},
+		Msg: "success",
+	}, nil
+}
+
+func (h *Handler) UpdateCategory(ctx *ginx.Context, req UpdateCategoryReq) (ginx.Result, error) {
+	count, err := h.categorySvc.Update(ctx, domain.TaskCategory{
+		ID: req.ID, Name: req.Name, Description: req.Description,
+	})
+	if err != nil {
+		return systemErrorResult, err
+	}
+	return ginx.Result{Data: count, Msg: "success"}, nil
+}
+
+func (h *Handler) DeleteCategory(ctx *ginx.Context) (ginx.Result, error) {
+	id, err := ctx.Param("id").AsInt64()
+	if err != nil {
+		return systemErrorResult, err
+	}
+	count, err := h.categorySvc.Delete(ctx, id)
+	if err != nil {
+		return systemErrorResult, err
+	}
+	return ginx.Result{Data: count, Msg: "success"}, nil
+}
+
+func (h *Handler) ReplaceCategoryTasks(ctx *ginx.Context, req ReplaceCategoryTasksReq) (ginx.Result, error) {
+	id, err := ctx.Param("id").AsInt64()
+	if err != nil {
+		return systemErrorResult, err
+	}
+	if err = h.categorySvc.ReplaceTasks(ctx, id, req.TaskIDs); err != nil {
+		return systemErrorResult, err
+	}
+	return ginx.Result{Msg: "success"}, nil
 }
 
 func toDomain(req CreateTaskReq) domain.Task {

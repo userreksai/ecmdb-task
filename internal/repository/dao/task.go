@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/userreksai/ecmdb-task/internal/domain"
 	"github.com/userreksai/ecmdb-task/internal/errs"
 	"github.com/userreksai/ecmdb-task/pkg/sqlx"
-	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +24,8 @@ const (
 // Task 任务表DAO对象
 type Task struct {
 	ID                  int64                               `gorm:"type:bigint;primaryKey;autoIncrement;"`
+	CategoryID          sql.NullInt64                       `gorm:"column:category_id;type:bigint unsigned;index:idx_tasks_category_id"`
+	Category            TaskCategory                        `gorm:"foreignKey:CategoryID;references:ID;constraint:OnDelete:SET NULL"`
 	TenantID            int64                               `gorm:"type:bigint unsigned;not null;default:0;index;comment:'租户ID'"`
 	BizID               int64                               `gorm:"type:bigint unsigned;not null;default:0;comment:biz_id"`
 	BizKey              string                              `gorm:"type:varchar(255);not null;default:'';index:idx_biz;comment:'业务方唯一标识，如工单号'"`
@@ -120,7 +122,7 @@ func (g *GORMTaskDAO) Create(ctx context.Context, task Task) (*Task, error) {
 
 func (g *GORMTaskDAO) GetByID(ctx context.Context, id int64) (*Task, error) {
 	var task Task
-	err := g.db.WithContext(ctx).Where("id = ?", id).First(&task).Error
+	err := g.db.WithContext(ctx).Preload("Category").Where("id = ?", id).First(&task).Error
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +131,7 @@ func (g *GORMTaskDAO) GetByID(ctx context.Context, id int64) (*Task, error) {
 
 func (g *GORMTaskDAO) GetByName(ctx context.Context, name string) (*Task, error) {
 	var task Task
-	err := g.db.WithContext(ctx).Where("name = ?", name).First(&task).Error
+	err := g.db.WithContext(ctx).Preload("Category").Where("name = ?", name).First(&task).Error
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +385,7 @@ func (g *GORMTaskDAO) isUniqueConstraintError(err error) bool {
 func (g *GORMTaskDAO) List(ctx context.Context, bizID int64, offset, limit int) ([]*Task, error) {
 	var tasks []*Task
 	err := g.db.WithContext(ctx).
+		Preload("Category").
 		Where("biz_id = ?", bizID).
 		Order("id DESC").
 		Offset(offset).

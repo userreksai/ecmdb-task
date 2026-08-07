@@ -3,9 +3,9 @@ package domain
 import (
 	"time"
 
+	"github.com/robfig/cron/v3"
 	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
 	"github.com/userreksai/ecmdb-task/pkg/retry"
-	"github.com/robfig/cron/v3"
 )
 
 // TaskStatus 任务状态
@@ -48,6 +48,8 @@ func (tt TaskType) IsRecurring() bool {
 
 type Task struct {
 	ID                  int64
+	CategoryID          int64  // 0 表示未分类
+	CategoryName        string // 分类名称，仅用于查询展示
 	TenantID            int64  // 租户ID，多租户隔离
 	BizID               int64  // 业务模块 ID，0 表示独立任务，>0 表示由业务系统创建
 	BizKey              string // 业务方唯一标识，如工单号 "order_1448"

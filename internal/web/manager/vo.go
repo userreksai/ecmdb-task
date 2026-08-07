@@ -31,8 +31,10 @@ type RetryConfig struct {
 }
 
 type PageReq struct {
-	Offset int `json:"offset"`
-	Limit  int `json:"limit"`
+	Offset     int    `json:"offset"`
+	Limit      int    `json:"limit"`
+	Query      string `json:"query"`
+	CategoryID *int64 `json:"category_id"`
 }
 
 type IdReq struct {
@@ -54,6 +56,8 @@ type UpdateTaskReq struct {
 
 type TaskVO struct {
 	ID                  int64             `json:"id"`
+	CategoryID          int64             `json:"category_id"`
+	CategoryName        string            `json:"category_name"`
 	Name                string            `json:"name"`
 	Type                string            `json:"type"`
 	CronExpr            string            `json:"cron_expr"`
@@ -67,6 +71,39 @@ type TaskVO struct {
 	CTime               int64             `json:"ctime"`
 	UTime               int64             `json:"utime"`
 	Metadata            map[string]string `json:"metadata"`
+}
+
+type CreateCategoryReq struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type UpdateCategoryReq struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type ListCategoryReq struct {
+	Keyword string `json:"keyword"`
+}
+
+type ReplaceCategoryTasksReq struct {
+	TaskIDs []int64 `json:"task_ids"`
+}
+
+type TaskCategoryVO struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	TaskCount   int64  `json:"task_count"`
+	CTime       int64  `json:"ctime"`
+	UTime       int64  `json:"utime"`
+}
+
+type ListCategoryResp struct {
+	Categories         []TaskCategoryVO `json:"categories"`
+	UncategorizedCount int64            `json:"uncategorized_count"`
 }
 
 type ListTaskResp struct {

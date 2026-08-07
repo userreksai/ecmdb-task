@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/userreksai/ecmdb-task/internal/domain"
 	"github.com/userreksai/ecmdb-task/internal/repository/dao"
 	"github.com/userreksai/ecmdb-task/pkg/sqlx"
-	"github.com/ecodeclub/ekit/slice"
 )
 
 type TaskRepository interface {
@@ -190,6 +190,11 @@ func (r *taskRepository) toEntity(task domain.Task) dao.Task {
 		scheduleNodeID = sql.NullString{String: task.ScheduleNodeID, Valid: true}
 	}
 
+	var categoryID sql.NullInt64
+	if task.CategoryID > 0 {
+		categoryID = sql.NullInt64{Int64: task.CategoryID, Valid: true}
+	}
+
 	var grpcConfig sqlx.JSONColumn[domain.GrpcConfig]
 	if task.GrpcConfig != nil {
 		grpcConfig = sqlx.JSONColumn[domain.GrpcConfig]{Val: *task.GrpcConfig, Valid: true}
@@ -217,6 +222,7 @@ func (r *taskRepository) toEntity(task domain.Task) dao.Task {
 
 	return dao.Task{
 		ID:                  task.ID,
+		CategoryID:          categoryID,
 		TenantID:            task.TenantID,
 		BizID:               task.BizID,
 		BizKey:              task.BizKey,
@@ -241,6 +247,10 @@ func (r *taskRepository) toEntity(task domain.Task) dao.Task {
 
 // toDomain 将DAO模型转换为领域模型
 func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
+	return taskEntityToDomain(daoTask)
+}
+
+func taskEntityToDomain(daoTask *dao.Task) domain.Task {
 	maxExecutionSeconds := daoTask.MaxExecutionSeconds
 	if maxExecutionSeconds <= 0 {
 		maxExecutionSeconds = domain.DefaultMaxExecutionSeconds
@@ -278,6 +288,8 @@ func (r *taskRepository) toDomain(daoTask *dao.Task) domain.Task {
 
 	return domain.Task{
 		ID:                  daoTask.ID,
+		CategoryID:          daoTask.CategoryID.Int64,
+		CategoryName:        daoTask.Category.Name,
 		TenantID:            daoTask.TenantID,
 		BizID:               daoTask.BizID,
 		BizKey:              daoTask.BizKey,

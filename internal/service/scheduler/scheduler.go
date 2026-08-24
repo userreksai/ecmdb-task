@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/gotomicro/ego/core/constant"
+	"github.com/gotomicro/ego/core/elog"
+	"github.com/gotomicro/ego/server"
 	"github.com/userreksai/ecmdb-task/internal/domain"
 	"github.com/userreksai/ecmdb-task/internal/service/acquirer"
 	"github.com/userreksai/ecmdb-task/internal/service/picker"
 	"github.com/userreksai/ecmdb-task/internal/service/runner"
 	"github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/userreksai/ecmdb-task/pkg/grpc/balancer"
-	"github.com/gotomicro/ego/core/constant"
-	"github.com/gotomicro/ego/core/elog"
-	"github.com/gotomicro/ego/server"
 )
 
 var _ server.Server = &Scheduler{}
@@ -23,15 +23,21 @@ var _ server.Server = &Scheduler{}
 type Scheduler struct {
 	nodeID             string                    // 当前调度节点ID
 	runner             runner.Runner             // Runner 分发器
-	taskSvc            task.Service              // 任务服务
+	taskSvc            scheduleTaskService       // 任务服务
 	execSvc            task.ExecutionService     // 任务执行服务
 	acquirer           acquirer.TaskAcquirer     // 任务抢占、续约、释放器
 	config             Config                    // 配置
 	executorNodePicker picker.ExecutorNodePicker // 智能节点选择器
 	modeResolver       picker.IExecModeResolver  // 执行模式感知器
+	startedAt          int64                     // 本次调度器启动时间，用于跳过停机期间错过的周期触发
 	ctx                context.Context
 	cancel             context.CancelFunc
 	logger             *elog.Component
+}
+
+type scheduleTaskService interface {
+	SchedulableTasks(ctx context.Context, preemptedTimeoutMs int64, limit int) ([]domain.Task, error)
+	UpdateNextTime(ctx context.Context, id int64) (domain.Task, error)
 }
 
 // Config 调度器配置
@@ -89,6 +95,7 @@ func (s *Scheduler) Init() error {
 // Start 启动调度器
 func (s *Scheduler) Start() error {
 	s.logger.Info("启动分布式任务调度器", elog.String("nodeID", s.nodeID))
+	s.startedAt = time.Now().UnixMilli()
 
 	// 启动调度循环
 	go s.scheduleLoop()
@@ -124,7 +131,21 @@ func (s *Scheduler) scheduleLoop() {
 		s.logger.Info("发现可调度任务", elog.Int("count", len(tasks)))
 		// 开始调度
 		successCount := 0
+		skippedCount := 0
 		for i := range tasks {
+			skipped, skipErr := s.skipMissedRecurringTask(tasks[i])
+			if skipped {
+				if skipErr != nil {
+					s.logger.Error("跳过重启前错过的周期任务失败",
+						elog.Int64("taskID", tasks[i].ID),
+						elog.String("taskName", tasks[i].Name),
+						elog.FieldErr(skipErr))
+				} else {
+					skippedCount++
+				}
+				continue
+			}
+
 			if err = s.scheduleOnce(tasks[i]); err != nil {
 				s.logger.Error("调度任务失败",
 					elog.Int64("taskID", tasks[i].ID),
@@ -136,9 +157,31 @@ func (s *Scheduler) scheduleLoop() {
 		}
 		s.logger.Info("本次调度信息",
 			elog.Int("success", successCount),
+			elog.Int("skipped", skippedCount),
 			elog.Int("total", len(tasks)))
 
 	}
+}
+
+// skipMissedRecurringTask 跳过服务启动前已经到期的周期任务。
+// 停机期间错过的触发点只推进 next_time，不补发执行；启动后的正常触发不受影响。
+func (s *Scheduler) skipMissedRecurringTask(t domain.Task) (bool, error) {
+	if !t.Type.IsRecurring() || t.NextTime >= s.startedAt {
+		return false, nil
+	}
+
+	updated, err := s.taskSvc.UpdateNextTime(s.ctx, t.ID)
+	if err != nil {
+		// 即使推进失败也不能继续下发，否则仍会产生一次重启补跑。
+		return true, fmt.Errorf("推进下次执行时间失败: %w", err)
+	}
+
+	s.logger.Info("已跳过重启前错过的周期任务",
+		elog.Int64("taskID", t.ID),
+		elog.String("taskName", t.Name),
+		elog.Int64("missedNextTime", t.NextTime),
+		elog.Int64("nextTime", updated.NextTime))
+	return true, nil
 }
 
 // scheduleOnce 调度单个任务

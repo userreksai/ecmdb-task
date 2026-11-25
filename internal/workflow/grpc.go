@@ -93,8 +93,8 @@ func toProtoRunner(r *ecmdbrunnerv1.Runner) *runnerv1.Runner {
 	return &runnerv1.Runner{
 		Id: r.GetId(), Name: r.GetName(), CodebookId: r.GetCodebookId(), Kind: r.GetKind(),
 		Target: r.GetTarget(), Handler: r.GetHandler(), Tags: r.GetTags(), Desc: r.GetDesc(),
-		// eflow 用 program_kind 区分脚本来源；ECMDB 的执行单元都绑定 codebook 脚本
-		ProgramKind: "CODEBOOK",
+		// eflow 用 program_kind 区分单脚本（INLINE）与完整项目（PROJECT）；ECMDB 执行单元都绑定单个 codebook 脚本
+		ProgramKind: "INLINE",
 	}
 }
 

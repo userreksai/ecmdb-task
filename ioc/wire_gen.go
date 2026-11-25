@@ -66,9 +66,11 @@ func InitSchedulerModule(base *Base) *SchedulerModule {
 	workflowDAO := InitWorkflowDAO(db)
 	clientConnInterface := InitECMDBGrpcClient(registry)
 	runnerCatalog := InitECMDBRunnerCatalog(clientConnInterface)
-	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients)
+	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients, mq, logService)
 	bridge := InitWorkflowBridge(mq, workflowService)
-	v := InitTasks(retryCompensator, rescheduleCompensator, interruptCompensator, completeConsumer, bridge)
+	kafkaResultConsumer := InitWorkflowKafkaResultConsumer(mq, workflowService)
+	kafkaExpireJob := InitWorkflowKafkaExpireJob(workflowService)
+	v := InitTasks(retryCompensator, rescheduleCompensator, interruptCompensator, completeConsumer, bridge, kafkaResultConsumer, kafkaExpireJob)
 	schedulerModule := &SchedulerModule{
 		Svc:   scheduler,
 		Tasks: v,
@@ -120,7 +122,7 @@ func InitSchedulerServerModule(base *Base) *grpc.Server {
 	executorNodePicker := InitExecutorNodePicker(registry)
 	iExecModeResolver := InitExecModeResolver(registry, taskRepository)
 	scheduler := InitScheduler(string2, runner, service, executionService, taskAcquirer, executorNodePicker, iExecModeResolver)
-	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients)
+	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients, mq, logService)
 	schedulerServer := workflow.NewSchedulerServer(workflowService)
 	runnerServer := workflow.NewRunnerServer(runnerCatalog)
 	executionServer := InitWorkflowExecutionServer(agentServer, executionService, workflowService)

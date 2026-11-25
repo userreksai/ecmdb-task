@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ecodeclub/mq-api"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	ecmdbrunnerv1 "github.com/userreksai/ecmdb-task/api/proto/gen/ecmdb/runner/v1"
 	"github.com/userreksai/ecmdb-task/internal/domain"
 	"github.com/userreksai/ecmdb-task/internal/errs"
 	"github.com/userreksai/ecmdb-task/internal/event"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -69,8 +70,25 @@ func (m *memDAO) set(id int64, fn func(*Request)) error {
 	}
 	return ErrRequestNotFound
 }
-func (m *memDAO) BindTask(_ context.Context, id, taskID int64) error {
-	return m.set(id, func(r *Request) { r.TaskID = taskID })
+func (m *memDAO) BindTask(_ context.Context, id, taskID int64, kind string) error {
+	return m.set(id, func(r *Request) { r.TaskID, r.Kind = taskID, kind })
+}
+func (m *memDAO) MarkKafkaDispatched(_ context.Context, id, deadline int64) error {
+	return m.set(id, func(r *Request) { r.Dispatched, r.Deadline = true, deadline })
+}
+func (m *memDAO) ClearDeadline(_ context.Context, id int64) error {
+	return m.set(id, func(r *Request) { r.Deadline = 0 })
+}
+func (m *memDAO) ListExpired(_ context.Context, now int64, _ int) ([]Request, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Request
+	for _, r := range m.rows {
+		if r.Deadline > 0 && r.Deadline <= now {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 func (m *memDAO) BindExecution(_ context.Context, id, execID int64) error {
 	return m.set(id, func(r *Request) { r.ExecutionID = execID })
@@ -101,6 +119,9 @@ type fakeEngine struct {
 	states      []domain.ExecutionState
 	scheduleErr error
 	noExecution bool
+	published   []published
+	publishErr  error
+	logs        []domain.TaskExecutionLog
 }
 
 func newFakeEngine() *fakeEngine {
@@ -152,6 +173,25 @@ func (f *fakeEngine) UpdateState(_ context.Context, s domain.ExecutionState) err
 	f.states = append(f.states, s)
 	return nil
 }
+func (f *fakeEngine) CreateExecution(e domain.TaskExecution) domain.TaskExecution {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	e.ID = int64(1000 + len(f.executions))
+	f.executions[e.ID] = e
+	return e
+}
+func (f *fakeEngine) Publish(_ context.Context, topic string, msg AgentMessage) error {
+	if f.publishErr != nil {
+		return f.publishErr
+	}
+	f.published = append(f.published, published{topic: topic, msg: msg})
+	return nil
+}
+func (f *fakeEngine) AddLog(_ context.Context, l domain.TaskExecutionLog) error {
+	f.logs = append(f.logs, l)
+	return nil
+}
+
 func (f *fakeEngine) Interrupt(_ context.Context, e domain.TaskExecution) error {
 	f.interrupted = append(f.interrupted, e.ID)
 	return nil
@@ -159,7 +199,7 @@ func (f *fakeEngine) Interrupt(_ context.Context, e domain.TaskExecution) error 
 
 func newTestService(kind string, eng *fakeEngine) (*service, *memDAO) {
 	dao := &memDAO{}
-	svc := NewService(dao, fakeCatalog{kind: kind}, eng, eng, eng, eng).(*service)
+	svc := NewService(dao, fakeCatalog{kind: kind}, eng, execStore{eng}, eng, eng, eng, eng).(*service)
 	svc.waitFor = 200 * time.Millisecond
 	return svc, dao
 }
@@ -178,7 +218,7 @@ func TestRunRunner(t *testing.T) {
 	}{
 		{name: "缺少 request_id", kind: RunnerKindGRPC, req: RunRequest{RunnerID: 1},
 			wantErr: ErrInvalidRequest, wantCode: codes.InvalidArgument},
-		{name: "KAFKA 执行单元暂不支持", kind: RunnerKindKafka, req: RunRequest{RequestID: "r1", RunnerID: 1},
+		{name: "不支持的运行模式被拒绝", kind: "HTTP", req: RunRequest{RequestID: "r1", RunnerID: 1},
 			wantErr: ErrRejected, wantCode: codes.FailedPrecondition},
 		{name: "提交成功", kind: RunnerKindGRPC,
 			req: RunRequest{RequestID: "r1", RunnerID: 7, Params: map[string]string{"args": `{"a":1}`},
@@ -287,14 +327,14 @@ func TestBridgeTranslate(t *testing.T) {
 	ctx := context.Background()
 	dao := &memDAO{}
 	wf, _, _ := dao.FindOrCreate(ctx, Request{RequestID: "wf-1", Source: SourceWorkflow})
-	_ = dao.BindTask(ctx, wf.ID, 11)
+	_ = dao.BindTask(ctx, wf.ID, 11, RunnerKindGRPC)
 	cancelled, _, _ := dao.FindOrCreate(ctx, Request{RequestID: "wf-2", Source: SourceWorkflow})
-	_ = dao.BindTask(ctx, cancelled.ID, 12)
+	_ = dao.BindTask(ctx, cancelled.ID, 12, RunnerKindGRPC)
 	_ = dao.MarkCancel(ctx, cancelled.ID, "stop")
 	notify, _, _ := dao.FindOrCreate(ctx, Request{RequestID: "notify:1", Source: SourceOf("notify:1")})
-	_ = dao.BindTask(ctx, notify.ID, 13)
+	_ = dao.BindTask(ctx, notify.ID, 13, RunnerKindGRPC)
 
-	bridge := &Bridge{svc: NewService(dao, nil, nil, nil, nil, nil)}
+	bridge := &Bridge{svc: NewService(dao, nil, nil, nil, nil, nil, nil, nil)}
 
 	testCases := []struct {
 		name       string
@@ -328,4 +368,131 @@ func TestBridgeTranslate(t *testing.T) {
 
 func TestToStatus(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(toStatus(errors.New("db down"))))
+}
+
+type published struct {
+	topic string
+	msg   AgentMessage
+}
+
+// execStore 让 fakeEngine 以 ExecutionStore 身份出现（Create 与任务创建同名不同签名）
+type execStore struct{ *fakeEngine }
+
+func (e execStore) Create(_ context.Context, x domain.TaskExecution) (domain.TaskExecution, error) {
+	return e.CreateExecution(x), nil
+}
+
+func TestKafkaRunner(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("投递指令到 Agent Topic，task_id 为负的执行 ID，幂等补发不重复投递", func(t *testing.T) {
+		eng := newFakeEngine()
+		svc, dao := newTestService(RunnerKindKafka, eng)
+		req := RunRequest{RequestID: "k1", RunnerID: 7, Params: map[string]string{"args": `{"host":"10.0.0.1"}`}}
+
+		res, err := svc.RunRunner(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, eng.published, 1)
+		msg := eng.published[0]
+		assert.Equal(t, "execute", msg.topic, "Topic 取自执行单元 target")
+		assert.Equal(t, KafkaCorrelationID(res.ExecutionID), msg.msg.TaskId)
+		assert.Equal(t, "10.0.0.1", msg.msg.Args["host"])
+		assert.Equal(t, "echo hi", msg.msg.Code)
+
+		row, _ := dao.FindByRequestID(ctx, "k1")
+		assert.True(t, row.Dispatched)
+		assert.Positive(t, row.Deadline)
+		assert.Equal(t, domain.TaskStatusInactive, eng.tasks[row.TaskID].Status, "KAFKA 任务不进入调度循环")
+		assert.Nil(t, eng.tasks[row.TaskID].GrpcConfig)
+
+		again, err := svc.RunRunner(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, res.ExecutionID, again.ExecutionID)
+		assert.Len(t, eng.published, 1, "已投递的请求不应重复投递")
+	})
+
+	t.Run("投递失败可用同一 request_id 重试且不重复创建执行", func(t *testing.T) {
+		eng := newFakeEngine()
+		eng.publishErr = errors.New("broker down")
+		svc, _ := newTestService(RunnerKindKafka, eng)
+		_, err := svc.RunRunner(ctx, RunRequest{RequestID: "k2", RunnerID: 7})
+		require.Error(t, err)
+		assert.Equal(t, codes.Internal, status.Code(toStatus(err)), "传输类错误由 eflow 幂等重投")
+
+		eng.publishErr = nil
+		res, err := svc.RunRunner(ctx, RunRequest{RequestID: "k2", RunnerID: 7})
+		require.NoError(t, err)
+		assert.Len(t, eng.executions, 1)
+		assert.Len(t, eng.published, 1)
+		assert.Positive(t, res.ExecutionID)
+	})
+
+	testCases := []struct {
+		name       string
+		success    bool
+		terminal   bool
+		wantStatus domain.TaskExecutionStatus
+		wantUpdate bool
+	}{
+		{name: "Agent 成功结果终结执行并写日志", success: true, wantStatus: domain.TaskExecutionStatusSuccess, wantUpdate: true},
+		{name: "Agent 失败结果", wantStatus: domain.TaskExecutionStatusFailed, wantUpdate: true},
+		{name: "已终结执行忽略迟到结果", success: true, terminal: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			eng := newFakeEngine()
+			svc, dao := newTestService(RunnerKindKafka, eng)
+			res, err := svc.RunRunner(ctx, RunRequest{RequestID: "k3", RunnerID: 7})
+			require.NoError(t, err)
+			if tc.terminal {
+				e := eng.executions[res.ExecutionID]
+				e.Status = domain.TaskExecutionStatusFailed
+				eng.executions[res.ExecutionID] = e
+			}
+
+			consumer := &KafkaResultConsumer{svc: svc}
+			body, _ := json.Marshal(map[string]any{"task_id": KafkaCorrelationID(res.ExecutionID),
+				"result": "stdout...", "want_result": `{"ok":true}`, "status": map[bool]int{true: 1, false: 2}[tc.success]})
+			require.NoError(t, consumer.Consume(ctx, &mq.Message{Value: body}))
+
+			row, _ := dao.FindByRequestID(ctx, "k3")
+			assert.Zero(t, row.Deadline, "收到结果后不再参与超时巡检")
+			if !tc.wantUpdate {
+				assert.Empty(t, eng.states)
+				return
+			}
+			require.Len(t, eng.states, 1)
+			assert.Equal(t, tc.wantStatus, eng.states[0].Status)
+			assert.Equal(t, `{"ok":true}`, eng.states[0].TaskResult)
+			require.Len(t, eng.logs, 1)
+			assert.Equal(t, "stdout...", eng.logs[0].Content)
+		})
+	}
+
+	t.Run("非工作流的 Agent 结果（task_id 为正）直接忽略", func(t *testing.T) {
+		eng := newFakeEngine()
+		svc, _ := newTestService(RunnerKindKafka, eng)
+		body, _ := json.Marshal(map[string]any{"task_id": 88, "status": 1})
+		require.NoError(t, (&KafkaResultConsumer{svc: svc}).Consume(ctx, &mq.Message{Value: body}))
+		assert.Empty(t, eng.states)
+	})
+
+	t.Run("超时巡检终结未收到结果的执行", func(t *testing.T) {
+		eng := newFakeEngine()
+		svc, dao := newTestService(RunnerKindKafka, eng)
+		_, err := svc.RunRunner(ctx, RunRequest{RequestID: "k4", RunnerID: 7, MaxExecutionSeconds: 1})
+		require.NoError(t, err)
+
+		n, err := svc.ExpireKafka(ctx, time.Now())
+		require.NoError(t, err)
+		assert.Zero(t, n, "未到期不处理")
+
+		n, err = svc.ExpireKafka(ctx, time.Now().Add(48*time.Hour))
+		require.NoError(t, err)
+		assert.Equal(t, 1, n)
+		require.Len(t, eng.states, 1)
+		assert.Equal(t, domain.TaskExecutionStatusFailed, eng.states[0].Status)
+		row, _ := dao.FindByRequestID(ctx, "k4")
+		assert.Zero(t, row.Deadline)
+	})
 }

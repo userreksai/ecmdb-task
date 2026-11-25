@@ -38,6 +38,7 @@ type TaskCreator interface {
 
 // ExecutionStore 执行记录读写（由 internal/service/task.ExecutionService 实现）。
 type ExecutionStore interface {
+	Create(ctx context.Context, execution domain.TaskExecution) (domain.TaskExecution, error)
 	FindByID(ctx context.Context, id int64) (domain.TaskExecution, error)
 	ListByTaskID(ctx context.Context, taskID int64, offset, limit int) ([]domain.TaskExecution, int64, error)
 	UpdateState(ctx context.Context, state domain.ExecutionState) error
@@ -61,6 +62,10 @@ type Service interface {
 	FindByExecution(ctx context.Context, executionID int64) (Request, error)
 	// FindByTask 返回任务对应的工作流请求（不存在时返回 ErrRequestNotFound）
 	FindByTask(ctx context.Context, taskID int64) (Request, error)
+	// CompleteKafka 处理 Kafka Agent 回传的执行结果
+	CompleteKafka(ctx context.Context, executionID int64, success bool, output, result string) error
+	// ExpireKafka 终结超时仍未收到结果的 Kafka 执行，返回终结数量
+	ExpireKafka(ctx context.Context, now time.Time) (int, error)
 }
 
 type service struct {
@@ -70,17 +75,20 @@ type service struct {
 	executions  ExecutionStore
 	scheduler   ImmediateScheduler
 	interrupter Interrupter
+	publisher   AgentPublisher
+	logs        LogWriter
 	waitFor     time.Duration
 	logger      *elog.Component
 }
 
-// NewService 创建工作流执行编排服务。
+// NewService 创建工作流执行编排服务；publisher / logs 为 Kafka Agent 执行所需（为空时拒绝 KAFKA 执行单元）。
 func NewService(dao DAO, runners RunnerCatalog, tasks TaskCreator, executions ExecutionStore,
-	scheduler ImmediateScheduler, interrupter Interrupter) Service {
+	scheduler ImmediateScheduler, interrupter Interrupter, publisher AgentPublisher, logs LogWriter) Service {
 	return &service{
 		dao: dao, runners: runners, tasks: tasks, executions: executions,
-		scheduler: scheduler, interrupter: interrupter, waitFor: defaultWaitDuration,
-		logger: elog.DefaultLogger.With(elog.FieldComponentName("workflow.service")),
+		scheduler: scheduler, interrupter: interrupter, publisher: publisher, logs: logs,
+		waitFor: defaultWaitDuration,
+		logger:  elog.DefaultLogger.With(elog.FieldComponentName("workflow.service")),
 	}
 }
 
@@ -99,13 +107,21 @@ func (s *service) RunRunner(ctx context.Context, req RunRequest) (RunResult, err
 	if r.CancelRequested {
 		return RunResult{}, fmt.Errorf("%w: 请求 %s 已被终止", ErrRejected, r.RequestID)
 	}
-	if r.ExecutionID > 0 {
+	// 已有执行：GRPC 直接返回；KAFKA 只有在指令已投递后才算完成提交
+	if r.ExecutionID > 0 && (!r.IsKafka() || r.Dispatched) {
 		return RunResult{ExecutionID: r.ExecutionID, Created: false}, nil
 	}
 
-	task, err := s.ensureTask(ctx, &r, req)
+	task, exec, err := s.ensureTask(ctx, &r, req)
 	if err != nil {
 		return RunResult{}, err
+	}
+	if r.IsKafka() {
+		executionID, kafkaErr := s.dispatchKafka(ctx, &r, task, exec, req)
+		if kafkaErr != nil {
+			return RunResult{}, kafkaErr
+		}
+		return RunResult{ExecutionID: executionID, Created: created}, nil
 	}
 
 	// 立即调度：与调度循环竞争时由任务乐观锁保证只抢占一次，抢占失败说明调度循环已接手
@@ -123,48 +139,62 @@ func (s *service) RunRunner(ctx context.Context, req RunRequest) (RunResult, err
 	return RunResult{ExecutionID: executionID, Created: created}, nil
 }
 
-// ensureTask 为请求创建（或找回已创建的）一次性任务。
-func (s *service) ensureTask(ctx context.Context, r *Request, req RunRequest) (domain.Task, error) {
-	if r.TaskID > 0 {
-		return s.tasks.GetByID(ctx, r.TaskID)
-	}
-
+// ensureTask 为请求创建（或找回已创建的）一次性任务，并返回解析后的执行单元信息。
+//
+//   - GRPC：任务为 ACTIVE 并带 gRPC 配置，由调度链路（立即调度 / 调度循环）执行；
+//   - KAFKA：任务为 INACTIVE 且不带 gRPC 配置，仅作为执行记录的归属与界面展示，
+//     不会被调度循环拾取，指令由 dispatchKafka 直接投递到 Agent 监听的 Topic。
+func (s *service) ensureTask(ctx context.Context, r *Request, req RunRequest) (domain.Task, RunnerExecution, error) {
 	exec, err := s.runners.ResolveExecution(ctx, req.RunnerID)
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("解析执行单元 %d 失败: %w", req.RunnerID, err)
+		return domain.Task{}, RunnerExecution{}, fmt.Errorf("解析执行单元 %d 失败: %w", req.RunnerID, err)
 	}
-	if !strings.EqualFold(exec.Kind, RunnerKindGRPC) {
-		return domain.Task{}, fmt.Errorf("%w: 执行单元 %d 的运行模式为 %s，工作流执行目前只支持 GRPC 执行器",
+	if r.TaskID > 0 {
+		task, getErr := s.tasks.GetByID(ctx, r.TaskID)
+		return task, exec, getErr
+	}
+
+	kind := strings.ToUpper(strings.TrimSpace(exec.Kind))
+	if kind != RunnerKindGRPC && kind != RunnerKindKafka {
+		return domain.Task{}, RunnerExecution{}, fmt.Errorf("%w: 执行单元 %d 的运行模式 %s 不受支持",
 			ErrRejected, req.RunnerID, exec.Kind)
 	}
 
 	params, err := buildParams(r.RequestID, exec, req)
 	if err != nil {
-		return domain.Task{}, err
+		return domain.Task{}, RunnerExecution{}, err
 	}
-	task, err := s.tasks.Create(ctx, domain.Task{
+	task := domain.Task{
 		Name:                taskNamePrefix + r.RequestID,
 		BizKey:              r.RequestID,
 		Type:                domain.TaskTypeOneTime,
 		MaxExecutionSeconds: req.MaxExecutionSeconds,
-		GrpcConfig:          &domain.GrpcConfig{ServiceName: exec.Target, HandlerName: exec.Handler, Params: params},
 		// 工作流执行的重试由 eflow 以新的执行尝试发起，这里不做执行器层重试，避免重复执行外部动作
 		RetryConfig: &domain.RetryConfig{MaxRetries: 0},
 		Status:      domain.TaskStatusActive,
 		Version:     1,
 		Metadata: map[string]string{
-			"source": string(r.Source), "request_id": r.RequestID,
+			"source": string(r.Source), "request_id": r.RequestID, "kind": kind,
 			"runner_id": strconv.FormatInt(req.RunnerID, 10), "runner_name": exec.Name,
 		},
-	})
+	}
+	if kind == RunnerKindKafka {
+		task.Status = domain.TaskStatusInactive
+		task.Metadata["topic"] = exec.Target
+		task.ScheduleParams = params
+	} else {
+		task.GrpcConfig = &domain.GrpcConfig{ServiceName: exec.Target, HandlerName: exec.Handler, Params: params}
+	}
+
+	task, err = s.tasks.Create(ctx, task)
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("创建一次性任务失败: %w", err)
+		return domain.Task{}, RunnerExecution{}, fmt.Errorf("创建一次性任务失败: %w", err)
 	}
-	if err = s.dao.BindTask(ctx, r.ID, task.ID); err != nil {
-		return domain.Task{}, fmt.Errorf("绑定一次性任务失败: %w", err)
+	if err = s.dao.BindTask(ctx, r.ID, task.ID, kind); err != nil {
+		return domain.Task{}, RunnerExecution{}, fmt.Errorf("绑定一次性任务失败: %w", err)
 	}
-	r.TaskID = task.ID
-	return task, nil
+	r.TaskID, r.Kind = task.ID, kind
+	return task, exec, nil
 }
 
 // buildParams 组装执行器参数：与 ECMDB 原有下发格式一致（code / args / variables），

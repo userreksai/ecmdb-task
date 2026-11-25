@@ -44,8 +44,31 @@ type Request struct {
 	Source          Source
 	CancelRequested bool
 	CancelReason    string
-	CTime           int64
-	UTime           int64
+	// Kind 执行单元运行模式（GRPC / KAFKA），KAFKA 执行不经过调度循环
+	Kind string
+	// Dispatched KAFKA 执行的指令是否已投递到 Agent Topic（避免补发时重复执行）
+	Dispatched bool
+	// Deadline KAFKA 执行的超时时间点（毫秒）；0 表示已结束或无需超时巡检
+	Deadline int64
+	CTime    int64
+	UTime    int64
+}
+
+// IsKafka 是否为 Kafka Agent 执行。
+func (r Request) IsKafka() bool { return r.Kind == RunnerKindKafka }
+
+// KafkaCorrelationID 投递给 Kafka Agent 的 task_id：使用执行 ID 的相反数。
+//
+// 为什么用负数：Agent 把结果固定回传到 result_execute_events，ECMDB 旧的自动化任务模块也在消费该 Topic，
+// 并按 task_id 更新自己的任务。负数不会与 ECMDB 的任务 ID 冲突，两边可以安全共存。
+func KafkaCorrelationID(executionID int64) int64 { return -executionID }
+
+// ExecutionIDFromKafka 从 Agent 回传的 task_id 还原执行 ID；非工作流执行返回 0。
+func ExecutionIDFromKafka(taskID int64) int64 {
+	if taskID >= 0 {
+		return 0
+	}
+	return -taskID
 }
 
 // RunRequest RunRunner 的入参。

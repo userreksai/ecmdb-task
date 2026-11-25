@@ -99,6 +99,8 @@ var (
 		InitECMDBRunnerCatalog,
 		InitWorkflowService,
 		InitWorkflowBridge,
+		InitWorkflowKafkaResultConsumer,
+		InitWorkflowKafkaExpireJob,
 		workflow.NewSchedulerServer,
 		workflow.NewRunnerServer,
 		InitWorkflowExecutionServer,

@@ -23,6 +23,9 @@ type WorkflowRequest struct {
 	Source          string `gorm:"type:varchar(32);not null;default:'WORKFLOW';comment:'WORKFLOW|NOTIFY'"`
 	CancelRequested bool   `gorm:"not null;default:false;comment:'是否已请求终止'"`
 	CancelReason    string `gorm:"type:varchar(1000);not null;default:'';comment:'终止原因'"`
+	Kind            string `gorm:"type:varchar(16);not null;default:'GRPC';comment:'执行单元运行模式 GRPC|KAFKA'"`
+	Dispatched      bool   `gorm:"not null;default:false;comment:'KAFKA 指令是否已投递'"`
+	Deadline        int64  `gorm:"type:bigint;not null;default:0;index;comment:'KAFKA 执行超时时间点，0 表示无需巡检'"`
 	Ctime           int64
 	Utime           int64
 }
@@ -37,9 +40,15 @@ type DAO interface {
 	FindByRequestID(ctx context.Context, requestID string) (Request, error)
 	FindByTaskID(ctx context.Context, taskID int64) (Request, error)
 	FindByExecutionID(ctx context.Context, executionID int64) (Request, error)
-	BindTask(ctx context.Context, id, taskID int64) error
+	BindTask(ctx context.Context, id, taskID int64, kind string) error
 	BindExecution(ctx context.Context, id, executionID int64) error
 	MarkCancel(ctx context.Context, id int64, reason string) error
+	// MarkKafkaDispatched 记录 KAFKA 指令已投递及超时时间点
+	MarkKafkaDispatched(ctx context.Context, id, deadline int64) error
+	// ClearDeadline KAFKA 执行已结束，不再参与超时巡检
+	ClearDeadline(ctx context.Context, id int64) error
+	// ListExpired 列出已超时仍待巡检的 KAFKA 执行请求
+	ListExpired(ctx context.Context, now int64, limit int) ([]Request, error)
 }
 
 type gormDAO struct{ db *gorm.DB }
@@ -89,8 +98,8 @@ func (d *gormDAO) findOne(ctx context.Context, query string, arg any) (Request, 
 	return toDomain(row), nil
 }
 
-func (d *gormDAO) BindTask(ctx context.Context, id, taskID int64) error {
-	return d.update(ctx, id, map[string]any{"task_id": taskID})
+func (d *gormDAO) BindTask(ctx context.Context, id, taskID int64, kind string) error {
+	return d.update(ctx, id, map[string]any{"task_id": taskID, "kind": kind})
 }
 
 func (d *gormDAO) BindExecution(ctx context.Context, id, executionID int64) error {
@@ -99,6 +108,28 @@ func (d *gormDAO) BindExecution(ctx context.Context, id, executionID int64) erro
 
 func (d *gormDAO) MarkCancel(ctx context.Context, id int64, reason string) error {
 	return d.update(ctx, id, map[string]any{"cancel_requested": true, "cancel_reason": reason})
+}
+
+func (d *gormDAO) MarkKafkaDispatched(ctx context.Context, id, deadline int64) error {
+	return d.update(ctx, id, map[string]any{"dispatched": true, "deadline": deadline})
+}
+
+func (d *gormDAO) ClearDeadline(ctx context.Context, id int64) error {
+	return d.update(ctx, id, map[string]any{"deadline": 0})
+}
+
+func (d *gormDAO) ListExpired(ctx context.Context, now int64, limit int) ([]Request, error) {
+	var rows []WorkflowRequest
+	err := d.db.WithContext(ctx).Where("deadline > 0 AND deadline <= ?", now).
+		Order("deadline ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Request, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDomain(row))
+	}
+	return out, nil
 }
 
 func (d *gormDAO) update(ctx context.Context, id int64, values map[string]any) error {
@@ -111,6 +142,7 @@ func toModel(r Request) WorkflowRequest {
 		ID: r.ID, TenantID: r.TenantID, RequestID: r.RequestID, RunnerID: r.RunnerID,
 		TaskID: r.TaskID, ExecutionID: r.ExecutionID, Source: string(r.Source),
 		CancelRequested: r.CancelRequested, CancelReason: r.CancelReason,
+		Kind: r.Kind, Dispatched: r.Dispatched, Deadline: r.Deadline,
 	}
 }
 
@@ -119,6 +151,7 @@ func toDomain(m WorkflowRequest) Request {
 		ID: m.ID, TenantID: m.TenantID, RequestID: m.RequestID, RunnerID: m.RunnerID,
 		TaskID: m.TaskID, ExecutionID: m.ExecutionID, Source: Source(m.Source),
 		CancelRequested: m.CancelRequested, CancelReason: m.CancelReason,
+		Kind: m.Kind, Dispatched: m.Dispatched, Deadline: m.Deadline,
 		CTime: m.Ctime, UTime: m.Utime,
 	}
 }

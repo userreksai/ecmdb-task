@@ -29,7 +29,23 @@ RunRunner ─► workflow_requests（request_id 幂等）
 - 执行器参数与 ECMDB 原有下发格式一致：`code`、`args`、`variables`（另附 `request_id`）。
 - 进程内调度节点 ID 为单例：gRPC 服务端立即抢占的任务由调度循环统一续约，长任务不会被误判为僵尸任务。
 - 通知脚本（`request_id` 以 `notify:` 开头）的终态不回传 eflow。
-- 目前仅支持 **GRPC 类型**的执行单元；KAFKA 类型（Kafka Agent）提交会被拒绝。
+- **GRPC 类型**执行单元走上面的调度链路；**KAFKA 类型**（Kafka Agent）见下节。
+
+## KAFKA 类型执行单元（Kafka Agent，Agent 代码不变）
+
+```
+RunRunner ─► 一次性任务（INACTIVE，不进入调度循环）+ 执行记录
+          ─► 投递 ExecuteReceive{task_id: -执行ID, code, args, variables} 到执行单元 target 配置的 Topic
+Agent     ─► result_execute_events{task_id: -执行ID, result, want_result, status}
+          ─► 独立消费组 eflow-kafka-result：写执行日志（Agent 标准输出）、终结执行记录
+          ─► complete_topic ─► eflow-bridge ─► eflow
+超时巡检  ─► 每 30 秒检查一次，超过最大执行时间仍无结果的执行标记为失败
+```
+
+- **task_id 使用负数**：Agent 结果固定发到 result_execute_events，ECMDB 旧的自动化任务模块也消费该 Topic、
+  按 task_id 更新自己的任务；负数不会与 ECMDB 任务 ID 冲突（ECMDB 侧同时忽略非正数 task_id）。
+- 指令投递成功后才算提交完成；投递失败时 eflow 用同一 request_id 重试，只补投递、不重复创建执行。
+- Kafka Agent 不支持中途中断：终止请求会立即把执行标记为失败（eflow 侧呈现为已取消），Agent 之后回传的结果被忽略。
 
 ## 依赖
 

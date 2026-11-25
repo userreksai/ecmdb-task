@@ -1,6 +1,9 @@
 package ioc
 
 import (
+	"time"
+
+	"github.com/ecodeclub/mq-api"
 	ecmdbrunnerv1 "github.com/userreksai/ecmdb-task/api/proto/gen/ecmdb/runner/v1"
 	executorv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/executor/v1"
 	grpcapi "github.com/userreksai/ecmdb-task/internal/grpc"
@@ -8,7 +11,6 @@ import (
 	"github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/userreksai/ecmdb-task/internal/workflow"
 	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
-	"github.com/ecodeclub/mq-api"
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
 )
@@ -29,8 +31,19 @@ func InitECMDBRunnerCatalog(cc grpc.ClientConnInterface) workflow.RunnerCatalog 
 // InitWorkflowService 组装工作流执行编排：复用现有任务、执行、调度与执行器中断能力。
 func InitWorkflowService(dao workflow.DAO, catalog workflow.RunnerCatalog, taskSvc task.Service,
 	execSvc task.ExecutionService, sch *scheduler.Scheduler,
-	clients *pool.Clients[executorv1.ExecutorServiceClient]) workflow.Service {
-	return workflow.NewService(dao, catalog, taskSvc, execSvc, sch, workflow.NewInterrupter(clients, execSvc))
+	clients *pool.Clients[executorv1.ExecutorServiceClient], q mq.MQ, logSvc task.LogService) workflow.Service {
+	return workflow.NewService(dao, catalog, taskSvc, execSvc, sch, workflow.NewInterrupter(clients, execSvc),
+		workflow.NewAgentPublisher(q), logSvc)
+}
+
+// InitWorkflowKafkaResultConsumer Kafka Agent 回传结果的消费者（独立消费组，只处理工作流执行）。
+func InitWorkflowKafkaResultConsumer(q mq.MQ, svc workflow.Service) *workflow.KafkaResultConsumer {
+	return workflow.NewKafkaResultConsumer(q, svc)
+}
+
+// InitWorkflowKafkaExpireJob 超时仍未收到结果的 Kafka 执行巡检。
+func InitWorkflowKafkaExpireJob(svc workflow.Service) *workflow.KafkaExpireJob {
+	return workflow.NewKafkaExpireJob(svc, 30*time.Second)
 }
 
 // InitWorkflowBridge 工作流执行终态 → eflow 的事件桥接（独立消费组）。

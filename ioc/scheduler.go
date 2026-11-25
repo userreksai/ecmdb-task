@@ -1,6 +1,8 @@
 package ioc
 
 import (
+	"sync"
+
 	"github.com/userreksai/ecmdb-task/internal/service/acquirer"
 	"github.com/userreksai/ecmdb-task/internal/service/picker"
 	"github.com/userreksai/ecmdb-task/internal/service/runner"
@@ -10,8 +12,19 @@ import (
 	"github.com/spf13/viper"
 )
 
+var (
+	nodeIDOnce sync.Once
+	nodeID     string
+)
+
+// InitNodeID 返回本进程的调度节点 ID。
+//
+// 进程内所有模块共享同一个 ID：scheduler 模式下调度循环与 gRPC 服务端分别构造了 Scheduler 实例，
+// eflow 提交的工作流执行由 gRPC 服务端立即抢占，必须与调度循环使用同一 ID，
+// 才能被调度循环的续约（Renew）覆盖，避免长任务被误判为僵尸任务而重复执行。
 func InitNodeID() string {
-	return uuid.New().String()
+	nodeIDOnce.Do(func() { nodeID = uuid.New().String() })
+	return nodeID
 }
 
 func InitScheduler(

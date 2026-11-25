@@ -16,6 +16,7 @@ import (
 	"github.com/userreksai/ecmdb-task/internal/service/task"
 	executor2 "github.com/userreksai/ecmdb-task/internal/web/executor"
 	"github.com/userreksai/ecmdb-task/internal/web/manager"
+	"github.com/userreksai/ecmdb-task/internal/workflow"
 	"github.com/userreksai/ecmdb-task/pkg/grpc"
 	"github.com/userreksai/ecmdb-task/sdk/executor"
 )
@@ -62,7 +63,12 @@ func InitSchedulerModule(base *Base) *SchedulerModule {
 	rescheduleCompensator := InitRescheduleCompensator(runner, executionService)
 	interruptCompensator := InitInterruptCompensator(clients, executionService)
 	completeConsumer := InitCompleteEventConsumer(mq, service, executionService, taskAcquirer)
-	v := InitTasks(retryCompensator, rescheduleCompensator, interruptCompensator, completeConsumer)
+	workflowDAO := InitWorkflowDAO(db)
+	clientConnInterface := InitECMDBGrpcClient(registry)
+	runnerCatalog := InitECMDBRunnerCatalog(clientConnInterface)
+	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients)
+	bridge := InitWorkflowBridge(mq, workflowService)
+	v := InitTasks(retryCompensator, rescheduleCompensator, interruptCompensator, completeConsumer, bridge)
 	schedulerModule := &SchedulerModule{
 		Svc:   scheduler,
 		Tasks: v,
@@ -104,7 +110,21 @@ func InitSchedulerServerModule(base *Base) *grpc.Server {
 	reporterServer := grpc2.NewReporterServer(executionService)
 	taskServer := grpc2.NewTaskServer(service)
 	agentServer := grpc2.NewAgentServer(taskExecutionRepository, logService)
-	server := InitSchedulerNodeGRPCServer(registry, reporterServer, taskServer, agentServer)
+	workflowDAO := InitWorkflowDAO(db)
+	clientConnInterface := InitECMDBGrpcClient(registry)
+	runnerCatalog := InitECMDBRunnerCatalog(clientConnInterface)
+	taskAcquirer := InitMySQLTaskAcquirer(taskRepository)
+	clients := InitExecutorServiceGRPCClients(registry)
+	invoker := InitInvoker(clients)
+	runner := InitRunner(string2, service, executionService, taskAcquirer, invoker, completeProducer)
+	executorNodePicker := InitExecutorNodePicker(registry)
+	iExecModeResolver := InitExecModeResolver(registry, taskRepository)
+	scheduler := InitScheduler(string2, runner, service, executionService, taskAcquirer, executorNodePicker, iExecModeResolver)
+	workflowService := InitWorkflowService(workflowDAO, runnerCatalog, service, executionService, scheduler, clients)
+	schedulerServer := workflow.NewSchedulerServer(workflowService)
+	runnerServer := workflow.NewRunnerServer(runnerCatalog)
+	executionServer := InitWorkflowExecutionServer(agentServer, executionService, workflowService)
+	server := InitSchedulerNodeGRPCServer(registry, reporterServer, taskServer, agentServer, schedulerServer, runnerServer, executionServer)
 	return server
 }
 

@@ -10,6 +10,7 @@ import (
 	taskv1 "github.com/userreksai/ecmdb-task/api/proto/gen/etask/task/v1"
 	grpcapi "github.com/userreksai/ecmdb-task/internal/grpc"
 	"github.com/userreksai/ecmdb-task/internal/grpc/scripts"
+	"github.com/userreksai/ecmdb-task/internal/workflow"
 	grpcpkg "github.com/userreksai/ecmdb-task/pkg/grpc"
 	"github.com/userreksai/ecmdb-task/pkg/grpc/pool"
 	registrysdk "github.com/userreksai/ecmdb-task/pkg/grpc/registry"
@@ -55,7 +56,9 @@ func InitExecutor(reg registrysdk.Registry) *executor.Executor {
 
 // InitSchedulerNodeGRPCServer 初始化 Scheduler gRPC 服务器
 func InitSchedulerNodeGRPCServer(registry registrysdk.Registry, reporter *grpcapi.ReporterServer,
-	task *grpcapi.TaskServer, agent *grpcapi.AgentServer) *grpcpkg.Server {
+	task *grpcapi.TaskServer, agent *grpcapi.AgentServer,
+	wfScheduler *workflow.SchedulerServer, wfRunner *workflow.RunnerServer,
+	wfExecution *workflow.ExecutionServer) *grpcpkg.Server {
 	var cfg grpcpkg.ServerConfig
 	if err := viper.UnmarshalKey("grpc.server.scheduler", &cfg); err != nil {
 		panic(err)
@@ -65,7 +68,10 @@ func InitSchedulerNodeGRPCServer(registry registrysdk.Registry, reporter *grpcap
 	reporterv1.RegisterReporterServiceServer(server.Server, reporter)
 	taskv1.RegisterTaskServiceServer(server.Server, task)
 	executorv1.RegisterAgentServiceServer(server.Server, agent)
-	executorv1.RegisterTaskExecutionServiceServer(server.Server, agent)
+	// TaskExecutionService 以包装实现注册：原接口行为不变，补充 eflow 使用的 GetTaskExecution
+	executorv1.RegisterTaskExecutionServiceServer(server.Server, wfExecution)
+	// eflow 新版调度协议：SchedulerService / RunnerService
+	workflow.Register(server.Server, wfScheduler, wfRunner)
 
 	return server
 }

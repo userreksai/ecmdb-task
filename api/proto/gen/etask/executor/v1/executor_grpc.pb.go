@@ -353,6 +353,7 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	TaskExecutionService_GetTaskExecution_FullMethodName        = "/etask.executor.v1.TaskExecutionService/GetTaskExecution"
 	TaskExecutionService_ListTaskExecutions_FullMethodName      = "/etask.executor.v1.TaskExecutionService/ListTaskExecutions"
 	TaskExecutionService_GetExecutionLogs_FullMethodName        = "/etask.executor.v1.TaskExecutionService/GetExecutionLogs"
 	TaskExecutionService_BatchListTaskExecutions_FullMethodName = "/etask.executor.v1.TaskExecutionService/BatchListTaskExecutions"
@@ -362,6 +363,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TaskExecutionServiceClient interface {
+	// 按执行 ID 获取执行记录（eflow 对账使用）
+	GetTaskExecution(ctx context.Context, in *GetTaskExecutionRequest, opts ...grpc.CallOption) (*GetTaskExecutionResponse, error)
 	// 列出任务执行记录
 	ListTaskExecutions(ctx context.Context, in *ListTaskExecutionsRequest, opts ...grpc.CallOption) (*ListTaskExecutionsResponse, error)
 	// 获取执行日志
@@ -376,6 +379,16 @@ type taskExecutionServiceClient struct {
 
 func NewTaskExecutionServiceClient(cc grpc.ClientConnInterface) TaskExecutionServiceClient {
 	return &taskExecutionServiceClient{cc}
+}
+
+func (c *taskExecutionServiceClient) GetTaskExecution(ctx context.Context, in *GetTaskExecutionRequest, opts ...grpc.CallOption) (*GetTaskExecutionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskExecutionResponse)
+	err := c.cc.Invoke(ctx, TaskExecutionService_GetTaskExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *taskExecutionServiceClient) ListTaskExecutions(ctx context.Context, in *ListTaskExecutionsRequest, opts ...grpc.CallOption) (*ListTaskExecutionsResponse, error) {
@@ -412,6 +425,8 @@ func (c *taskExecutionServiceClient) BatchListTaskExecutions(ctx context.Context
 // All implementations must embed UnimplementedTaskExecutionServiceServer
 // for forward compatibility.
 type TaskExecutionServiceServer interface {
+	// 按执行 ID 获取执行记录（eflow 对账使用）
+	GetTaskExecution(context.Context, *GetTaskExecutionRequest) (*GetTaskExecutionResponse, error)
 	// 列出任务执行记录
 	ListTaskExecutions(context.Context, *ListTaskExecutionsRequest) (*ListTaskExecutionsResponse, error)
 	// 获取执行日志
@@ -428,6 +443,9 @@ type TaskExecutionServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedTaskExecutionServiceServer struct{}
 
+func (UnimplementedTaskExecutionServiceServer) GetTaskExecution(context.Context, *GetTaskExecutionRequest) (*GetTaskExecutionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTaskExecution not implemented")
+}
 func (UnimplementedTaskExecutionServiceServer) ListTaskExecutions(context.Context, *ListTaskExecutionsRequest) (*ListTaskExecutionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTaskExecutions not implemented")
 }
@@ -456,6 +474,24 @@ func RegisterTaskExecutionServiceServer(s grpc.ServiceRegistrar, srv TaskExecuti
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&TaskExecutionService_ServiceDesc, srv)
+}
+
+func _TaskExecutionService_GetTaskExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskExecutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskExecutionServiceServer).GetTaskExecution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskExecutionService_GetTaskExecution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskExecutionServiceServer).GetTaskExecution(ctx, req.(*GetTaskExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _TaskExecutionService_ListTaskExecutions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -519,6 +555,10 @@ var TaskExecutionService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "etask.executor.v1.TaskExecutionService",
 	HandlerType: (*TaskExecutionServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetTaskExecution",
+			Handler:    _TaskExecutionService_GetTaskExecution_Handler,
+		},
 		{
 			MethodName: "ListTaskExecutions",
 			Handler:    _TaskExecutionService_ListTaskExecutions_Handler,

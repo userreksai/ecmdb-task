@@ -11,6 +11,7 @@ import (
 	taskSvc "github.com/userreksai/ecmdb-task/internal/service/task"
 	"github.com/userreksai/ecmdb-task/internal/web/executor"
 	"github.com/userreksai/ecmdb-task/internal/web/manager"
+	"github.com/userreksai/ecmdb-task/internal/workflow"
 )
 
 var (
@@ -89,6 +90,18 @@ var (
 
 	ConsumerSet = wire.NewSet(
 		InitCompleteEventConsumer,
+	)
+
+	// WorkflowSet eflow 工作流执行适配（调度协议、执行单元代理、终态回传）
+	WorkflowSet = wire.NewSet(
+		InitECMDBGrpcClient,
+		InitWorkflowDAO,
+		InitECMDBRunnerCatalog,
+		InitWorkflowService,
+		InitWorkflowBridge,
+		workflow.NewSchedulerServer,
+		workflow.NewRunnerServer,
+		InitWorkflowExecutionServer,
 	)
 
 	// AppSet 包含 Scheduler 模式的核心 Provider

@@ -31,6 +31,7 @@ func InitSchedulerModule(base *Base) *SchedulerModule {
 		GrpcSet,
 		InitRunner,
 		InitInvoker,
+		WorkflowSet,
 		// 从 Base 中提取基础资源
 		wire.FieldsOf(new(*Base), "Registry", "MQ"),
 		InitTasks,
@@ -65,6 +66,11 @@ func InitSchedulerServerModule(base *Base) *grpcpkg.Server {
 		SchedulerSet,
 		AppSet,
 		ProducerSet,
+		// eflow 工作流执行：gRPC 服务端需要立即调度能力（Runner / Invoker / 执行器客户端）
+		WorkflowSet,
+		GrpcSet,
+		InitRunner,
+		InitInvoker,
 		// 从 Base 中提取依赖
 		wire.FieldsOf(new(*Base), "Registry", "MQ"),
 	)

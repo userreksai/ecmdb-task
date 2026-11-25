@@ -213,6 +213,12 @@ func (s *Scheduler) scheduleOnce(task domain.Task) error {
 	return s.runner.Run(ctx, task)
 }
 
+// ScheduleNow 立即调度单个任务（与调度循环走同一条选节点、抢占、执行路径）。
+// 供 eflow 工作流执行在提交时同步拿到执行记录；与调度循环竞争时由任务乐观锁保证只执行一次。
+func (s *Scheduler) ScheduleNow(_ context.Context, task domain.Task) error {
+	return s.scheduleOnce(task)
+}
+
 // renewLoop 续约循环
 func (s *Scheduler) renewLoop() {
 	ticker := time.NewTicker(s.config.RenewInterval)
